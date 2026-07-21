@@ -369,13 +369,27 @@ class Store:
         with self._write():
             self.conn.execute(f"UPDATE apps SET {', '.join(sets)} WHERE id = ?", args)
 
-    def delete_app(self, app_id: int) -> None:
-        """Delete an app, its sheets, its attachment rows, and its stored files."""
+    def forget_app(self, app_id: int) -> Path:
+        """Delete an app and everything hanging off it in the database.
+
+        Returns the attachment folder, which is still on disk. Database only,
+        so the caller can clear the folder on a worker thread afterwards.
+        """
         folder = self.app_attachments_dir(app_id)
         with self._write():
             self.conn.execute("DELETE FROM apps WHERE id = ?", (app_id,))
-        if folder.exists():
-            shutil.rmtree(folder, ignore_errors=True)
+        return folder
+
+    @staticmethod
+    def discard_folder(folder: Path | str) -> None:
+        """Remove a stored attachment folder. Filesystem only."""
+        path = Path(folder)
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+
+    def delete_app(self, app_id: int) -> None:
+        """Delete an app, its sheets, its attachment rows, and its stored files."""
+        self.discard_folder(self.forget_app(app_id))
 
     def promote_idea(
         self,
@@ -496,11 +510,13 @@ class Store:
     def app_attachments_dir(self, app_id: int) -> Path:
         return self._attachments_root / str(app_id)
 
-    def attach_file(self, app_id: int, source: Path | str) -> Attachment:
-        """Copy a file into Dig's managed folder and record it.
+    def stage_attachment(self, app_id: int, source: Path | str) -> Path:
+        """Copy a file into the managed folder and return where it landed.
 
-        The original is never moved or altered. A name already in use gets a
-        -2, -3 suffix rather than overwriting what is there.
+        Filesystem only, touching no database, so it is safe to run on a
+        worker thread: a sqlite3 connection belongs to the thread that opened
+        it. The original is never moved or altered, and a name already in use
+        gets a -2, -3 suffix rather than overwriting what is there.
         """
         src = Path(source).expanduser()
         if not src.is_file():
@@ -510,7 +526,13 @@ class Store:
 
         target = _free_path(folder, src.name)
         shutil.copy2(src, target)
+        return target
 
+    def record_attachment(self, app_id: int, stored: Path | str) -> Attachment:
+        """Record a file already copied into the managed folder."""
+        target = Path(stored)
+        if not target.is_file():
+            raise StoreError(f"There is no stored file at {target}.")
         with self._write():
             cur = self.conn.execute(
                 "INSERT INTO attachments (app_id, filename, stored_path, size, "
@@ -527,6 +549,10 @@ class Store:
         attachment = self.get_attachment(int(cur.lastrowid))
         assert attachment is not None
         return attachment
+
+    def attach_file(self, app_id: int, source: Path | str) -> Attachment:
+        """Copy a file in and record it, in one step."""
+        return self.record_attachment(app_id, self.stage_attachment(app_id, source))
 
     def get_attachment(self, attachment_id: int) -> Attachment | None:
         row = self.conn.execute(

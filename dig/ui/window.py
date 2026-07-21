@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (
 )
 
 from dig.screens.base import PlaceholderScreen, Screen
+from dig.screens.app_detail import AppDetailScreen
 from dig.screens.app_editor import AppEditorScreen
+from dig.screens.apps import AppsScreen
 from dig.screens.home import HomeScreen
 from dig.screens.idea_editor import IdeaEditorScreen
 from dig.screens.ideas import IdeasScreen
@@ -170,10 +172,20 @@ class MainWindow(QMainWindow):
         editor.deleted.connect(lambda _id: self.go_to("ideas"))
         self._add_detail_screen("idea_editor", editor)
 
+        apps = AppsScreen(self.store, self.theme.palette)
+        apps.app_opened.connect(self.open_app)
+        apps.new_app_requested.connect(self.new_app)
+        self.replace_screen("apps", apps)
+
         app_editor = AppEditorScreen(self.store, self.theme.palette)
         app_editor.cancelled.connect(self._leave_app_editor)
         app_editor.created.connect(self.open_app)
         self._add_detail_screen("app_editor", app_editor)
+
+        detail = AppDetailScreen(self.store, self.theme.palette)
+        detail.back_requested.connect(lambda: self.go_to("apps"))
+        detail.deleted.connect(lambda _id: self.go_to("apps"))
+        self._add_detail_screen("app_detail", detail)
 
     def _add_detail_screen(self, key: str, screen: Screen) -> None:
         self.screens[key] = screen
@@ -266,8 +278,13 @@ class MainWindow(QMainWindow):
         self.go_to("apps")
 
     def open_app(self, app_id: int) -> None:
-        """App Detail arrives with the apps phase; land on the list until then."""
-        self.go_to("apps")
+        """Open one app in full."""
+        detail = self.screens.get("app_detail")
+        if detail is None:
+            self.go_to("apps")
+            return
+        detail.load(app_id)
+        self.go_to("app_detail")
 
     def show_notice(self, text: str) -> None:
         """Tell the user something plainly, at the top of the content."""
