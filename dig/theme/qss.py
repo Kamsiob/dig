@@ -415,6 +415,124 @@ QToolTip {{
     outline: none;
 }}
 
+/* ---------- editors and forms ---------- */
+
+/* The title edits in place: it reads as the heading it is, not as a box. */
+#EditorTitle {{
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    padding: 2px 0px;
+    font-family: "{serif}";
+    font-size: 30px;
+    font-weight: 600;
+    color: {p.ink};
+}}
+
+#EditorTitle:hover {{
+    border-bottom: 1px solid {p.seam};
+}}
+
+#EditorTitle:focus {{
+    border-bottom: 1px solid {p.accent};
+}}
+
+#EditorMeta {{
+    font-family: "{mono}";
+    font-size: 11px;
+    color: {p.ink_faint};
+}}
+
+#EditorNote {{
+    background: {p.surface_raised};
+    border: 1px solid {p.seam};
+    padding: 14px 16px;
+    font-size: 15px;
+    color: {p.ink};
+}}
+
+#EditorNote:focus {{
+    border: 1px solid {p.accent};
+}}
+
+#FieldLabel {{
+    font-family: "{mono}";
+    font-size: {MONO_SMALL}px;
+    color: {p.ink_faint};
+}}
+
+#FormField, #FormArea {{
+    background: {p.surface_raised};
+    border: 1px solid {p.seam};
+    color: {p.ink};
+    padding: 9px 12px;
+    font-size: 14px;
+}}
+
+#FormField:focus, #FormArea:focus {{
+    border: 1px solid {p.accent};
+}}
+
+#SearchField {{
+    background: {p.surface_raised};
+    border: 1px solid {p.seam};
+    color: {p.ink};
+    padding: 9px 12px;
+    font-size: 14px;
+}}
+
+#SearchField:focus {{
+    border: 1px solid {p.accent};
+}}
+
+#ShowPromoted, #ShippedToggle {{
+    font-size: 13px;
+    color: {p.ink_dim};
+}}
+
+/* Delete stays quiet until it is reached for. */
+#QuietDanger {{
+    background: transparent;
+    border: none;
+    padding: 8px 4px;
+    font-size: 13.5px;
+    color: {p.ink_faint};
+}}
+
+#QuietDanger:hover, #QuietDanger:focus {{
+    color: {p.copper};
+    outline: none;
+}}
+
+#ConfirmDialog {{
+    background: {p.surface_raised};
+    border: 1px solid {p.seam};
+}}
+
+#ConfirmText {{
+    font-size: 15px;
+    color: {p.ink};
+}}
+
+#DangerButton {{
+    background: {p.copper};
+    color: {p.on_accent};
+    border: none;
+    padding: 8px 18px;
+    font-size: 13.5px;
+    font-weight: 600;
+}}
+
+#DangerButton:hover {{
+    background: {p.accent_hover};
+}}
+
+#DangerButton:focus {{
+    outline: none;
+    border: 2px solid {p.ink};
+    padding: 6px 16px;
+}}
+
 /* ---------- notices ---------- */
 
 #NoticeBar {{
