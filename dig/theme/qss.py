@@ -781,6 +781,57 @@ QToolTip {{
     color: {p.ink_faint};
 }}
 
+/* ---------- capture dialog ---------- */
+
+/* Copper across the top: this is the existing-app side of the app. */
+#CaptureDialog {{
+    background: {p.surface_raised};
+    border: 1px solid {p.seam};
+    border-top: 3px solid {p.copper};
+}}
+
+#CaptureSegment {{
+    background: transparent;
+    color: {p.ink_dim};
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 0px;
+    font-size: 13px;
+}}
+
+#CaptureSegment:hover {{
+    color: {p.ink};
+}}
+
+#CaptureSegment[active="true"] {{
+    background: {p.surface};
+    color: {p.ink};
+    border-bottom: 2px solid {p.copper};
+    font-weight: 600;
+}}
+
+#CaptureSegment:focus {{
+    outline: none;
+    color: {p.ink};
+}}
+
+#CaptureField, #CapturePicker {{
+    background: {p.surface_deep};
+    border: 1px solid {p.seam};
+    color: {p.ink};
+    padding: 10px 12px;
+    font-size: 14px;
+}}
+
+#CaptureField:focus, #CapturePicker:focus {{
+    border: 1px solid {p.copper};
+}}
+
+#CaptureNoApps {{
+    font-size: 13px;
+    color: {p.ink_faint};
+}}
+
 /* ---------- notices ---------- */
 
 #NoticeBar {{
