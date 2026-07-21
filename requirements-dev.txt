@@ -3,3 +3,6 @@
 
 pytest==8.4.2
 pytest-qt==4.5.0
+
+# Build-time only: cuts the static font instances in scripts/build_fonts.py.
+fonttools==4.60.1
