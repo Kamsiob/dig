@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dig by Kamsiob — Home</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ============ Theme tokens ============ */
+  :root[data-theme="light"] {
+    /* Field notes: warm paper, expedition ink, gold find */
+    --bg:          #EFE8D8;   /* page behind window */
+    --surface:     #F5EFE1;   /* main surface: field-notebook paper */
+    --surface-deep:#EBE3CF;   /* rail, input wells */
+    --surface-raised:#FAF6EB; /* hover, raised blocks */
+    --seam:        #D9CFB6;   /* hairline separations */
+    --ink:         #33372A;   /* primary text: green-black ink */
+    --ink-dim:     #6C6D59;   /* secondary text */
+    --ink-faint:   #9B9781;   /* metadata, hints */
+    --accent:      #A97A16;   /* the find: gold, darkened for contrast */
+    --accent-hover:#8F6708;
+    --accent-glow: rgba(169, 122, 22, 0.16);
+    --on-accent:   #FFFDF4;
+    --copper:      #A5572E;   /* unearthed specimen */
+    --verdigris:   #4E7A62;   /* complete states, status lamp */
+    --map-ink:     rgba(64, 66, 48, 0.16);   /* treasure map sketch */
+    --map-accent:  rgba(169, 122, 22, 0.28); /* the X and route */
+    --shadow:      rgba(80, 70, 40, 0.16);
+  }
+  :root[data-theme="dark"] {
+    /* Excavation at dusk */
+    --bg:          #0B0F0B;
+    --surface:     #16201A;
+    --surface-deep:#10160F;
+    --surface-raised:#1E2C22;
+    --seam:        #2E3F32;
+    --ink:         #EFE6D4;
+    --ink-dim:     #A9A493;
+    --ink-faint:   #6F6F60;
+    --accent:      #D9A13B;
+    --accent-hover:#EDB44E;
+    --accent-glow: rgba(217, 161, 59, 0.15);
+    --on-accent:   #1A1305;
+    --copper:      #C46A3F;
+    --verdigris:   #6FA08A;
+    --map-ink:     rgba(239, 230, 212, 0.10);
+    --map-accent:  rgba(217, 161, 59, 0.22);
+    --shadow:      rgba(0, 0, 0, 0.5);
+  }
+
+  :root {
+    --serif: 'Fraunces', Georgia, serif;
+    --sans:  'IBM Plex Sans', 'Helvetica Neue', sans-serif;
+    --mono:  'IBM Plex Mono', 'Courier New', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px 16px;
+    transition: background 200ms ease, color 200ms ease;
+  }
+
+  .window {
+    width: 100%;
+    max-width: 1080px;
+    min-height: 720px;
+    background: var(--surface);
+    border: 1px solid var(--seam);
+    box-shadow: 0 18px 60px var(--shadow);
+    display: grid;
+    grid-template-columns: 216px 1fr;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Paper grain over everything, whisper quiet */
+  .grain {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ============ Left rail ============ */
+  .rail {
+    background: var(--surface-deep);
+    border-right: 1px solid var(--seam);
+    padding: 30px 0 24px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* The wordmark: X marks the spot */
+  .wordmark {
+    font-family: var(--serif);
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    padding: 0 24px;
+    line-height: 1.1;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .wordmark .x {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--accent);
+    transform: rotate(-6deg);
+    display: inline-block;
+  }
+  .wordmark-rule {
+    margin: 6px 24px 4px;
+    height: 3px;
+    background:
+      linear-gradient(90deg, var(--accent) 0 62%, transparent 62%),
+      linear-gradient(90deg, transparent 0 68%, var(--copper) 68% 100%);
+  }
+
+  .byline {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--ink-faint);
+    padding: 0 24px 28px;
+  }
+
+  .nav a {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 9px 24px;
+    color: var(--ink-dim);
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 120ms ease;
+  }
+  .nav a.active {
+    color: var(--ink);
+    background: var(--surface);
+    box-shadow: inset 3px 0 0 var(--accent);
+    font-weight: 500;
+  }
+  .nav a:hover, .nav a:focus-visible { color: var(--ink); }
+  .nav a:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+  .nav a kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-faint);
+  }
+
+  /* Theme switcher */
+  .theme {
+    margin: 26px 24px 0;
+  }
+  .theme-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--ink-faint);
+    margin-bottom: 8px;
+  }
+  .theme-seg {
+    display: flex;
+    border: 1px solid var(--seam);
+  }
+  .theme-seg button {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--ink-dim);
+    font-family: var(--sans);
+    font-size: 12px;
+    padding: 7px 0;
+    cursor: pointer;
+  }
+  .theme-seg button + button { border-left: 1px solid var(--seam); }
+  .theme-seg button.on {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: inset 0 -2px 0 var(--accent);
+    font-weight: 600;
+  }
+  .theme-seg button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+  .rail-foot {
+    margin-top: auto;
+    padding: 0 24px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    line-height: 1.8;
+  }
+  .rail-foot .lamp {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--verdigris);
+    margin-right: 7px;
+  }
+
+  /* ============ Main ============ */
+  .main {
+    padding: 44px 52px 64px;
+    position: relative;
+  }
+
+  /* Treasure map: full-height sketch, whisper light */
+  .map {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .content { position: relative; z-index: 1; }
+
+  .greeting {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--ink-faint);
+    margin-bottom: 10px;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    margin-bottom: 26px;
+  }
+  h1 em {
+    font-style: normal;
+    color: var(--accent);
+  }
+
+  /* ---- Jot box ---- */
+  .jot {
+    background: var(--surface-raised);
+    border: 1px solid var(--seam);
+    border-bottom: 2px solid var(--accent);
+    padding: 18px 20px 14px;
+    transition: box-shadow 160ms ease;
+  }
+  .jot:focus-within {
+    box-shadow: 0 0 0 1px var(--accent), 0 6px 28px var(--accent-glow);
+  }
+  .jot textarea {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 19px;
+    line-height: 1.45;
+    height: 56px;
+  }
+  .jot textarea::placeholder { color: var(--ink-faint); }
+  .jot-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+  }
+  .jot-hint {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+  .btn {
+    font-family: var(--sans);
+    font-size: 13.5px;
+    font-weight: 600;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    padding: 8px 20px;
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+  .btn:hover { background: var(--accent-hover); }
+  .btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .btn kbd {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 400;
+    opacity: 0.8;
+    margin-left: 8px;
+  }
+
+  /* ---- Section heads ---- */
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 40px 0 4px;
+  }
+  .section-head h2 {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--ink-dim);
+  }
+  .section-head a {
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .section-head a:hover, .section-head a:focus-visible { text-decoration: underline; }
+
+  /* ---- Recent ideas: ledger rows ---- */
+  .idea-row {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 14px 8px;
+    border-bottom: 1px solid var(--seam);
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+  .idea-row:hover { background: var(--surface-raised); }
+  .idea-row .when {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    min-width: 64px;
+    flex-shrink: 0;
+  }
+  .idea-row .name {
+    font-family: var(--serif);
+    font-size: 16.5px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .idea-row .gist {
+    font-size: 13.5px;
+    color: var(--ink-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+  .idea-row .promote {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    text-decoration: none;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .idea-row:hover .promote,
+  .idea-row:focus-within .promote { opacity: 1; }
+
+  /* ---- Unearthed: the specimen ---- */
+  .unearthed {
+    margin-top: 44px;
+    background: var(--surface-raised);
+    border: 1px solid var(--seam);
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    position: relative;
+    box-shadow: 0 6px 24px var(--shadow);
+  }
+  .strata { display: flex; flex-direction: column; position: relative; }
+  .strata span { flex: 1; }
+  :root[data-theme="light"] .strata .s1 { background: #CDC3A4; }
+  :root[data-theme="light"] .strata .s2 { background: #B3A57E; }
+  :root[data-theme="light"] .strata .s3 { background: #C0954C; }
+  :root[data-theme="dark"]  .strata .s1 { background: #2A3A2C; }
+  :root[data-theme="dark"]  .strata .s2 { background: #40492E; }
+  :root[data-theme="dark"]  .strata .s3 { background: #6E5A2E; }
+  .strata .s4 { background: var(--copper); }
+  .strata::after {
+    content: "";
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 6px;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0px, transparent 11px,
+      var(--seam) 11px, var(--seam) 12px
+    );
+  }
+  .unearthed-body { padding: 22px 26px 20px; }
+  .unearthed .tag {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--copper);
+    margin-bottom: 10px;
+    font-weight: 500;
+  }
+  .unearthed .name {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .unearthed .gist { color: var(--ink-dim); max-width: 58ch; }
+  .unearthed .meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-top: 14px;
+  }
+  .unearthed-actions {
+    position: absolute;
+    top: 20px;
+    right: 24px;
+    display: flex;
+    gap: 18px;
+  }
+  .unearthed-actions a { font-size: 13px; color: var(--ink-dim); text-decoration: none; }
+  .unearthed-actions a:hover, .unearthed-actions a:focus-visible { color: var(--ink); }
+  .unearthed-actions a.open { color: var(--accent); font-weight: 600; }
+  .unearthed-actions a.open:hover { color: var(--accent-hover); }
+
+  /* ---- About: small trigger bottom-left, opens a dialog ---- */
+  .about-trigger {
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+  .about-trigger:hover, .about-trigger:focus-visible { color: var(--accent); }
+
+  .about-overlay {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--surface-deep) 60%, transparent);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  .about-overlay.open { display: flex; }
+  .about-dialog {
+    width: min(440px, 90%);
+    background: var(--surface-raised);
+    border: 1px solid var(--seam);
+    border-top: 3px solid var(--accent);
+    box-shadow: 0 18px 60px var(--shadow);
+    padding: 26px 28px 24px;
+    position: relative;
+  }
+  .about-dialog .wordmini {
+    font-family: var(--serif);
+    font-size: 24px;
+    font-weight: 700;
+  }
+  .about-dialog .wordmini .x { color: var(--accent); font-size: 15px; }
+  .about-dialog .tagline {
+    font-size: 13.5px;
+    color: var(--ink-dim);
+    margin: 4px 0 18px;
+  }
+  .about-links { display: flex; flex-direction: column; gap: 9px; }
+  .about-links a {
+    font-size: 13.5px;
+    color: var(--ink-dim);
+    text-decoration: none;
+  }
+  .about-links a b { color: var(--ink); font-weight: 600; }
+  .about-links a:hover b, .about-links a:focus-visible b { color: var(--accent); }
+  .about-license {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    margin-top: 18px;
+    line-height: 1.7;
+  }
+  .about-close {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    background: none;
+    border: none;
+    color: var(--ink-faint);
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .about-close:hover, .about-close:focus-visible { color: var(--ink); }
+
+  /* ---- Capture row: jot + capture side by side ---- */
+  .capture-line {
+    display: flex;
+    gap: 14px;
+    align-items: stretch;
+  }
+  .cap-col { display: flex; flex-direction: column; }
+  .cap-col.grow { flex: 1; }
+  .cap-col .jot, .cap-col .capture { flex: 1; }
+
+  .box-label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-dim);
+    margin-bottom: 7px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .box-label .dot {
+    width: 8px; height: 8px;
+    display: inline-block;
+  }
+  .box-label .dot.gold { background: var(--accent); }
+  .box-label .dot.copper { background: var(--copper); }
+
+  /* ---- Capture dialog ---- */
+  .cap-overlay {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--surface-deep) 60%, transparent);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  .cap-overlay.open { display: flex; }
+  .cap-dialog {
+    width: min(420px, 90%);
+    background: var(--surface-raised);
+    border: 1px solid var(--seam);
+    border-top: 3px solid var(--copper);
+    box-shadow: 0 18px 60px var(--shadow);
+    padding: 24px 26px 22px;
+    position: relative;
+  }
+  .cap-dialog .box-label { margin-bottom: 14px; }
+  .cap-kind {
+    display: flex;
+    border: 1px solid var(--seam);
+    margin-bottom: 12px;
+  }
+  .cap-kind button {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--ink-dim);
+    font-family: var(--sans);
+    font-size: 13px;
+    padding: 8px 0;
+    cursor: pointer;
+  }
+  .cap-kind button + button { border-left: 1px solid var(--seam); }
+  .cap-kind button.on {
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 600;
+    box-shadow: inset 0 -2px 0 var(--copper);
+  }
+  .cap-dialog input[type="text"], .cap-dialog select {
+    width: 100%;
+    background: var(--surface-deep);
+    border: 1px solid var(--seam);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    outline: none;
+  }
+  .cap-dialog input[type="text"]:focus, .cap-dialog select:focus { border-color: var(--copper); }
+  .cap-dialog .field-label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-faint);
+    margin-bottom: 6px;
+  }
+  .cap-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 4px; }
+  .btn.copper { background: var(--copper); color: var(--on-accent); }
+  .btn.copper:hover { background: color-mix(in srgb, var(--copper) 85%, black); }
+  .btn.ghost { background: transparent; color: var(--ink-dim); }
+  .btn.ghost:hover { background: transparent; color: var(--ink); }
+
+  /* ---- App detail view ---- */
+  .back-link {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-dim);
+    text-decoration: none;
+    display: inline-block;
+    margin-bottom: 16px;
+  }
+  .back-link:hover, .back-link:focus-visible { color: var(--accent); }
+
+  .app-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .app-head h1 { margin-bottom: 0; }
+  .chip {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding: 3px 9px;
+    border: 1px solid var(--seam);
+    color: var(--ink-dim);
+  }
+  .chip.shipped { color: var(--verdigris); border-color: var(--verdigris); }
+
+  .app-desc { color: var(--ink-dim); max-width: 62ch; margin-top: 10px; }
+  .app-meta {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    margin-top: 12px;
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+  }
+  .app-meta a { color: var(--accent); text-decoration: none; }
+  .app-meta a:hover { text-decoration: underline; }
+
+  /* Origin idea: where it was dug from */
+  .origin {
+    margin-top: 20px;
+    border-left: 3px solid var(--accent);
+    background: var(--surface-raised);
+    padding: 12px 16px;
+    font-size: 13.5px;
+    color: var(--ink-dim);
+  }
+  .origin b { color: var(--ink); font-weight: 600; }
+  .origin .o-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  /* Sheets: features & bugs side by side */
+  .sheets {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    margin-top: 34px;
+  }
+  .sheet-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 2px solid var(--seam);
+    padding-bottom: 7px;
+    margin-bottom: 4px;
+  }
+  .sheet-head h3 {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--ink-dim);
+  }
+  .sheet-head .count { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+  .sheet-head.f { border-bottom-color: var(--accent); }
+  .sheet-head.b { border-bottom-color: var(--copper); }
+
+  .line-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 9px 4px;
+    border-bottom: 1px solid var(--seam);
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .line-item:hover { background: var(--surface-raised); }
+  .line-item .box {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-faint);
+    flex-shrink: 0;
+  }
+  .line-item.done { color: var(--ink-faint); }
+  .line-item.done .txt { text-decoration: line-through; text-decoration-color: var(--seam); }
+  .line-item.done .box { color: var(--verdigris); }
+  .sheet-add {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-dim);
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 10px;
+  }
+  .sheet-add:hover { color: var(--accent); }
+
+  /* Notes, screenshots, attachments */
+  .app-section { margin-top: 34px; }
+  .app-section h3 {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--ink-dim);
+    margin-bottom: 10px;
+  }
+  .notes {
+    background: var(--surface-raised);
+    border: 1px solid var(--seam);
+    padding: 14px 18px;
+    font-size: 14px;
+    color: var(--ink-dim);
+    max-width: 70ch;
+  }
+  .notes li { margin-left: 18px; padding: 2px 0; }
+  .shots { display: flex; gap: 12px; }
+  .shot {
+    width: 150px; height: 94px;
+    background: var(--surface-deep);
+    border: 1px solid var(--seam);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-faint);
+  }
+  .files { display: flex; flex-direction: column; }
+  .file-row {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--seam);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-dim);
+  }
+  .file-row .size { color: var(--ink-faint); font-size: 11px; }
+
+  .capture {
+    width: 172px;
+    background: color-mix(in srgb, var(--copper) 8%, var(--surface-raised));
+    border: 2px dashed var(--copper);
+    color: var(--copper);
+    font-family: var(--sans);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 14px 12px;
+    transition: background 140ms ease, box-shadow 140ms ease;
+  }
+  .capture:hover, .capture:focus-visible {
+    background: color-mix(in srgb, var(--copper) 16%, var(--surface-raised));
+    box-shadow: 0 6px 24px color-mix(in srgb, var(--copper) 25%, transparent);
+  }
+  .capture:focus-visible { outline: 2px solid var(--copper); outline-offset: 2px; }
+  .capture .plus {
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .capture .cap-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .capture .cap-sub {
+    font-size: 12px;
+    color: var(--ink-dim);
+  }
+  .capture kbd {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--copper);
+    border: 1px solid var(--copper);
+    padding: 2px 7px;
+    margin-top: 6px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+    .capture:hover { transform: none; }
+  }
+
+  @media (max-width: 760px) {
+    .window { grid-template-columns: 1fr; min-height: 0; }
+    .rail { flex-direction: row; flex-wrap: wrap; align-items: center; padding: 14px 8px; gap: 4px; border-right: none; border-bottom: 1px solid var(--seam); }
+    .wordmark { font-size: 24px; padding: 0 10px; }
+    .wordmark-rule, .byline, .rail-foot, .nav a kbd, .theme-label { display: none; }
+    .theme { margin: 0 10px; }
+    .nav { display: flex; }
+    .nav a { padding: 8px 10px; font-size: 13px; }
+    .nav a.active { box-shadow: inset 0 -2px 0 var(--accent); background: transparent; }
+    .main { padding: 28px 20px 110px; }
+    h1 { font-size: 24px; }
+    .idea-row { flex-wrap: wrap; gap: 6px 12px; }
+    .idea-row .gist { white-space: normal; width: 100%; }
+    .idea-row .promote { opacity: 1; }
+    .unearthed-actions { position: static; margin-top: 12px; padding: 0 26px 18px; }
+    .capture-line { flex-direction: column; }
+    .capture { width: 100%; flex-direction: row; justify-content: center; gap: 10px; padding: 12px; }
+    .capture kbd { margin-top: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="window">
+  <div class="grain" aria-hidden="true"></div>
+
+  <aside class="rail">
+    <div class="wordmark">Dig <span class="x">✕</span></div>
+    <div class="wordmark-rule" aria-hidden="true"></div>
+    <div class="byline">by Kamsiob</div>
+    <nav class="nav">
+      <a class="active" id="nav-home" href="#" onclick="switchView('home');return false;">Home <kbd>1</kbd></a>
+      <a href="#">Ideas <kbd>2</kbd></a>
+      <a id="nav-app" href="#" onclick="switchView('app');return false;">Apps <kbd>3</kbd></a>
+      <a href="#">Export <kbd>4</kbd></a>
+      <a href="#">Settings <kbd>5</kbd></a>
+    </nav>
+    <div class="theme">
+      <div class="theme-label">Appearance</div>
+      <div class="theme-seg" role="group" aria-label="Theme">
+        <button id="t-light" class="on" onclick="setTheme('light')">Light</button>
+        <button id="t-dark" onclick="setTheme('dark')">Dark</button>
+        <button id="t-system" onclick="setTheme('system')">System</button>
+      </div>
+    </div>
+    <div class="rail-foot">
+      <span class="lamp"></span>local only · nothing leaves<br>
+      <button class="about-trigger" onclick="toggleAbout(true)">About Dig</button> · v0.1.0
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- Treasure map sketch: dashed route, islands, compass, X -->
+    <svg class="map" viewBox="0 0 820 720" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" fill="none">
+      <!-- coastline / island contours -->
+      <g stroke="var(--map-ink)" stroke-width="1.2">
+        <path d="M60 120 C 110 84, 190 92, 224 130 S 210 214, 150 218 S 40 180, 60 120 Z" />
+        <path d="M84 132 C 120 106, 176 112, 200 140 S 188 196, 148 198 S 62 172, 84 132 Z" />
+        <path d="M560 480 C 620 440, 720 452, 748 508 S 700 610, 620 600 S 508 532, 560 480 Z" />
+        <path d="M588 494 C 634 464, 706 474, 726 514 S 690 582, 630 574 S 546 532, 588 494 Z" />
+        <!-- river squiggle -->
+        <path d="M420 640 C 450 600, 430 560, 470 520 S 510 460, 495 420" />
+      </g>
+
+      <!-- mountain ranges -->
+      <g stroke="var(--map-ink)" stroke-width="1.2" stroke-linejoin="round">
+        <path d="M300 262 l 18 -28 l 18 28 M 328 262 l 14 -21 l 14 21 M 352 262 l 11 -16 l 11 16" />
+        <path d="M318 244 l 6 9" />
+        <path d="M620 210 l 16 -24 l 16 24 M 646 210 l 12 -18 l 12 18 M 668 210 l 9 -13 l 9 13" />
+        <path d="M120 420 l 15 -22 l 15 22 M 144 420 l 11 -16 l 11 16" />
+        <path d="M210 560 l 14 -20 l 14 20 M 232 560 l 10 -15 l 10 15 M 250 560 l 8 -12 l 8 12" />
+      </g>
+
+      <!-- wind: curved gusts with curled ends -->
+      <g stroke="var(--map-ink)" stroke-width="1.2" stroke-linecap="round">
+        <path d="M470 150 C 530 138, 590 138, 640 150 c 14 4, 14 18, 0 20 c -10 1, -14 -8, -6 -12" />
+        <path d="M450 180 C 520 168, 580 168, 622 178 c 11 3, 11 14, 0 16 c -8 1, -11 -6, -5 -9" />
+        <path d="M90 320 C 150 308, 210 308, 258 318 c 12 3, 12 15, 0 17 c -9 1, -12 -7, -5 -10" />
+        <path d="M540 620 C 600 608, 650 608, 692 618 c 11 3, 11 14, 0 16 c -8 1, -11 -6, -5 -9" />
+      </g>
+
+      <!-- dashed route to the X -->
+      <path d="M140 170 C 260 240, 300 380, 420 400 S 620 380, 668 528"
+            stroke="var(--map-accent)" stroke-width="1.6" stroke-dasharray="7 8" />
+      <!-- X marks the spot -->
+      <g stroke="var(--map-accent)" stroke-width="3" stroke-linecap="round">
+        <path d="M658 518 l 22 22 M 680 518 l -22 22" />
+      </g>
+
+      <!-- shovel, planted at an angle -->
+      <g stroke="var(--map-ink)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <!-- D-grip handle -->
+        <path d="M716 58 c 8 -8, 20 -8, 27 0 c 4 5, 3 12, -3 16 l -9 6" />
+        <path d="M722 66 c 5 -4, 11 -4, 14 0" />
+        <!-- shaft -->
+        <path d="M731 80 L 762 128" />
+        <!-- blade -->
+        <path d="M754 122 c 12 -6, 24 -2, 28 8 c 4 11, -2 24, -14 30 c -8 4, -16 2, -20 -6 c -4 -9, -2 -24, 6 -32 Z" fill="var(--map-accent)" fill-opacity="0.25" />
+        <!-- soil flecks at the blade -->
+        <path d="M748 168 l 5 3 M 760 172 l 6 2 M 774 170 l 5 -2" />
+      </g>
+    </svg>
+
+    <div class="content">
+
+      <div id="view-home">
+
+      <div class="greeting">Tuesday, July 21</div>
+      <h1>What did you just <em>think of?</em></h1>
+
+      <div class="capture-line">
+        <div class="cap-col grow">
+          <div class="box-label"><span class="dot gold"></span>New app idea</div>
+          <div class="jot">
+            <textarea placeholder="Jot the new idea before it goes…"></textarea>
+            <div class="jot-row">
+              <span class="jot-hint">Shift+Enter for a new line</span>
+              <button class="btn">Keep it<kbd>↵</kbd></button>
+            </div>
+          </div>
+        </div>
+        <div class="cap-col">
+          <div class="box-label"><span class="dot copper"></span>Existing app</div>
+          <button class="capture" onclick="toggleCapture(true)">
+            <span class="plus">+</span>
+            <span class="cap-label">Capture</span>
+            <span class="cap-sub">feature or bug</span>
+            <kbd>Ctrl K</kbd>
+          </button>
+        </div>
+      </div>
+
+      <div class="section-head">
+        <h2>Recent</h2>
+        <a href="#">All ideas →</a>
+      </div>
+
+      <div class="idea-row" tabindex="0">
+        <span class="when">2d ago</span>
+        <span class="name">Clipboard history that expires</span>
+        <span class="gist">everything auto-deletes after 24h, zero persistence by design</span>
+        <a class="promote" href="#">→ make it an app</a>
+      </div>
+      <div class="idea-row" tabindex="0">
+        <span class="when">5d ago</span>
+        <span class="name">RSS-to-Telegram digest</span>
+        <span class="gist">daily channel post built from selected feeds, runs on the mini PC</span>
+        <a class="promote" href="#">→ make it an app</a>
+      </div>
+      <div class="idea-row" tabindex="0">
+        <span class="when">1w ago</span>
+        <span class="name">Thumbnail A/B logger</span>
+        <span class="gist">track which thumbnail style correlates with CTR over time</span>
+        <a class="promote" href="#">→ make it an app</a>
+      </div>
+
+      <section class="unearthed">
+        <div class="strata" aria-hidden="true">
+          <span class="s1"></span><span class="s2"></span><span class="s3"></span><span class="s4"></span>
+        </div>
+        <div class="unearthed-body">
+          <div class="tag">Unearthed · buried 6 weeks</div>
+          <div class="name">Pocket wiki for the channel</div>
+          <div class="gist">One markdown file per video: gear used, commands run, links mentioned. Searchable. Becomes the description generator later.</div>
+          <div class="meta">jotted May 29 · never opened since</div>
+        </div>
+        <div class="unearthed-actions">
+          <a class="open" href="#">Open it</a>
+          <a href="#">Dig again ↻</a>
+        </div>
+      </section>
+
+      </div><!-- /view-home -->
+
+      <div id="view-app" style="display:none">
+
+        <a class="back-link" href="#" onclick="switchView('home');return false;">← All apps</a>
+
+        <div class="app-head">
+          <h1>Local AI Hub</h1>
+          <span class="chip shipped">Shipped</span>
+          <span class="chip">v1.2.0</span>
+        </div>
+        <p class="app-desc">Desktop control panel for Ollama, Open WebUI, and ComfyUI. Service control, model management, install-by-URL with hash verification, and a provenance manifest system.</p>
+        <div class="app-meta">
+          <span><a href="https://github.com/kamsiob/local-ai-hub">github.com/kamsiob/local-ai-hub</a></span>
+          <span>AGPLv3</span>
+          <span>PySide6 · QtWebEngine</span>
+        </div>
+
+        <div class="origin">
+          <span class="o-tag">Dug from an idea · jotted Feb 12</span>
+          <b>"One place to start/stop all the local AI stuff"</b> — kept, promoted Mar 3.
+        </div>
+
+        <div class="sheets">
+          <div class="sheet">
+            <div class="sheet-head f">
+              <h3>Feature sheet</h3>
+              <span class="count">2 open · 3 done</span>
+            </div>
+            <div class="line-item done"><span class="box">[✓]</span><span class="txt">Model install by URL with hash check</span></div>
+            <div class="line-item done"><span class="box">[✓]</span><span class="txt">Crash surfacing for all three services</span></div>
+            <div class="line-item done"><span class="box">[✓]</span><span class="txt">Provenance manifest via Civitai + HF</span></div>
+            <div class="line-item"><span class="box">[ ]</span><span class="txt">Disk usage per model, sortable</span></div>
+            <div class="line-item"><span class="box">[ ]</span><span class="txt">One-click log bundle for bug reports</span></div>
+            <a class="sheet-add" href="#">+ add feature</a>
+          </div>
+          <div class="sheet">
+            <div class="sheet-head b">
+              <h3>Bug sheet</h3>
+              <span class="count">1 open · 2 done</span>
+            </div>
+            <div class="line-item done"><span class="box">[✓]</span><span class="txt">Window grouping wrong on Wayland</span></div>
+            <div class="line-item done"><span class="box">[✓]</span><span class="txt">GGUF warning fires twice</span></div>
+            <div class="line-item"><span class="box">[ ]</span><span class="txt">Status lamp stale after Ollama restart</span></div>
+            <a class="sheet-add" href="#">+ add bug</a>
+          </div>
+        </div>
+
+        <div class="app-section">
+          <h3>Notes & talking points</h3>
+          <div class="notes">
+            <li>Lead with the hash-verification story: nobody else does provenance locally.</li>
+            <li>Demo order: service control → model install → crash surfacing.</li>
+            <li>Mention Bazzite immutable-/usr workaround; it's the video hook.</li>
+          </div>
+        </div>
+
+        <div class="app-section">
+          <h3>Screenshots</h3>
+          <div class="shots">
+            <div class="shot">home.png</div>
+            <div class="shot">models.png</div>
+            <div class="shot">install-flow.png</div>
+          </div>
+        </div>
+
+        <div class="app-section">
+          <h3>Attachments</h3>
+          <div class="files">
+            <div class="file-row"><span>icon-master.svg</span><span class="size">18 KB</span></div>
+            <div class="file-row"><span>launcher-icons.zip</span><span class="size">204 KB</span></div>
+            <div class="file-row"><span>release-notes-draft.md</span><span class="size">3 KB</span></div>
+          </div>
+        </div>
+
+      </div><!-- /view-app -->
+
+    </div>
+
+  </main>
+
+  <div class="about-overlay" id="aboutOverlay" onclick="if(event.target===this)toggleAbout(false)">
+    <div class="about-dialog" role="dialog" aria-label="About Dig">
+      <button class="about-close" onclick="toggleAbout(false)" aria-label="Close">✕</button>
+      <div class="wordmini">Dig <span class="x">✕</span></div>
+      <div class="tagline">A place to bury ideas and dig them back up.</div>
+      <div class="about-links">
+        <a href="https://youtube.com/@kamsiob"><b>YouTube</b> · Kamsiob on Linux</a>
+        <a href="https://github.com/kamsiob"><b>GitHub</b> · kamsiob</a>
+        <a href="https://kamsiob.com"><b>Website</b> · kamsiob.com</a>
+        <a href="https://buymeacoffee.com/kamsiob"><b>Buy Me a Coffee</b></a>
+        <a href="https://t.me/+g5LKm9rUnNcxMjk5"><b>Telegram</b> · Kamsiob Lab</a>
+        <a href="mailto:hello@kamsiob.com"><b>Feedback</b> · hello@kamsiob.com</a>
+      </div>
+      <div class="about-license">Free and open source · AGPLv3<br>Everything stays on your machine.</div>
+    </div>
+  </div>
+
+  <div class="cap-overlay" id="capOverlay" onclick="if(event.target===this)toggleCapture(false)">
+    <div class="cap-dialog" role="dialog" aria-label="Capture feature or bug">
+      <button class="about-close" onclick="toggleCapture(false)" aria-label="Close">✕</button>
+      <div class="box-label"><span class="dot copper"></span>Capture</div>
+      <div class="cap-kind" role="group" aria-label="Kind">
+        <button class="on" onclick="pickKind(this)">Feature</button>
+        <button onclick="pickKind(this)">Bug</button>
+      </div>
+      <div class="field-label">What is it?</div>
+      <input type="text" placeholder="One line is enough…">
+      <div class="field-label">Which app?</div>
+      <select>
+        <option>Local AI Hub</option>
+        <option>Bearings</option>
+        <option>Logbook</option>
+        <option>Dig</option>
+      </select>
+      <div class="cap-actions">
+        <button class="btn ghost" onclick="toggleCapture(false)">Cancel</button>
+        <button class="btn copper" onclick="toggleCapture(false)">Keep it<kbd>↵</kbd></button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  var mode = 'light';
+
+  function apply() {
+    var resolved = mode === 'system' ? (mq.matches ? 'dark' : 'light') : mode;
+    document.documentElement.setAttribute('data-theme', resolved);
+    ['light','dark','system'].forEach(function(m){
+      document.getElementById('t-' + m).classList.toggle('on', m === mode);
+    });
+  }
+  function setTheme(m) { mode = m; apply(); }
+  function toggleAbout(open) {
+    document.getElementById('aboutOverlay').classList.toggle('open', open);
+  }
+  function toggleCapture(open) {
+    document.getElementById('capOverlay').classList.toggle('open', open);
+  }
+  function pickKind(btn) {
+    var sibs = btn.parentElement.children;
+    for (var i = 0; i < sibs.length; i++) sibs[i].classList.remove('on');
+    btn.classList.add('on');
+  }
+  function switchView(v) {
+    document.getElementById('view-home').style.display = v === 'home' ? '' : 'none';
+    document.getElementById('view-app').style.display = v === 'app' ? '' : 'none';
+    document.getElementById('nav-home').classList.toggle('active', v === 'home');
+    document.getElementById('nav-app').classList.toggle('active', v === 'app');
+  }
+  mq.addEventListener('change', function(){ if (mode === 'system') apply(); });
+  apply();
+</script>
+
+</body>
+</html>
