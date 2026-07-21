@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Dig
+GenericName=App Registry
+Comment=A place to bury ideas and dig them back up
+Exec=__EXEC__
+Icon=dig
+Terminal=false
+Categories=Utility;Development;
+Keywords=ideas;notes;apps;registry;projects;
+StartupNotify=true
+StartupWMClass=dig
