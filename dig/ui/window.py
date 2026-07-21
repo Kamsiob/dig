@@ -25,9 +25,11 @@ from dig.screens.export import ExportScreen
 from dig.screens.home import HomeScreen
 from dig.screens.idea_editor import IdeaEditorScreen
 from dig.screens.ideas import IdeasScreen
+from dig.screens.settings import SettingsScreen
 from dig.storage import Store
 from dig.theme import APPEARANCE_KEY, ThemeManager
 from dig.ui.backdrop import GrainOverlay, MapBackdrop
+from dig.ui.about import AboutDialog
 from dig.ui.capture import CaptureDialog
 from dig.ui.rail import Rail, SCREENS
 
@@ -141,6 +143,7 @@ class MainWindow(QMainWindow):
 
         self._restore_geometry()
         self.rail.set_mode(self.theme.mode)
+        self.screens["settings"].set_mode(self.theme.mode)
         self.go_to("home")
 
     # ---------- screens ----------
@@ -191,6 +194,10 @@ class MainWindow(QMainWindow):
         self._add_detail_screen("app_editor", app_editor)
 
         self.replace_screen("export", ExportScreen(self.store, self.theme.palette))
+
+        settings = SettingsScreen(self.store, self.theme.palette)
+        settings.appearance_picked.connect(self.set_appearance)
+        self.replace_screen("settings", settings)
 
         detail = AppDetailScreen(self.store, self.theme.palette)
         detail.back_requested.connect(lambda: self.go_to("apps"))
@@ -249,6 +256,9 @@ class MainWindow(QMainWindow):
         palette = self.theme.palette
         self.rail.set_palette(palette)
         self.rail.set_mode(self.theme.mode)
+        settings = self.screens.get("settings")
+        if settings is not None and hasattr(settings, "set_mode"):
+            settings.set_mode(self.theme.mode)
         self.map_backdrop.set_palette(palette)
         for screen in self.screens.values():
             screen.set_palette(palette)
@@ -313,7 +323,8 @@ class MainWindow(QMainWindow):
         self.notice.say(text)
 
     def show_about(self) -> None:
-        """The About dialog arrives with the Settings phase."""
+        """Who made this and where to find more of it."""
+        AboutDialog(self.theme.palette, self).exec()
 
     # ---------- geometry ----------
 

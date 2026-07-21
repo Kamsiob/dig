@@ -832,6 +832,56 @@ QToolTip {{
     color: {p.ink_faint};
 }}
 
+/* ---------- about ---------- */
+
+#AboutDialog {{
+    background: {p.surface_raised};
+    border: 1px solid {p.seam};
+    border-top: 3px solid {p.accent};
+}}
+
+#AboutTagline {{
+    font-size: 13.5px;
+    color: {p.ink_dim};
+}}
+
+#AboutLink {{
+    background: transparent;
+    border: none;
+    padding: 0px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: {p.ink};
+    text-align: left;
+}}
+
+#AboutLink:hover, #AboutLink:focus {{
+    color: {p.accent};
+    outline: none;
+}}
+
+#AboutLinkDetail {{
+    font-size: 13.5px;
+    color: {p.ink_dim};
+}}
+
+#AboutLicence {{
+    font-family: "{mono}";
+    font-size: {MONO_SMALL}px;
+    color: {p.ink_faint};
+}}
+
+/* ---------- settings ---------- */
+
+#FolderPath {{
+    font-family: "{mono}";
+    font-size: 12.5px;
+    color: {p.ink_dim};
+    background: {p.surface_raised};
+    border: 1px solid {p.seam};
+    padding: 9px 12px;
+}}
+
 /* ---------- notices ---------- */
 
 #NoticeBar {{

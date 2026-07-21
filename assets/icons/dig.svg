@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#F5EFE1"/>
+  <rect x="8" y="8" width="496" height="496" fill="none"
+        stroke="#D9CFB6" stroke-width="10"/>
+
+  <!-- A scrap of coastline, the way the map behind Home is drawn -->
+  <g fill="none" stroke="#33372A" stroke-opacity="0.20" stroke-width="9"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M74 150 C 128 104, 226 112, 268 158 S 250 268, 176 274
+             S 50 222, 74 150 Z"/>
+    <path d="M330 392 l 26 -38 l 26 38 M 372 392 l 20 -28 l 20 28"/>
+  </g>
+
+  <!-- The dashed route, the only dashed thing in the identity -->
+  <path d="M120 196 C 200 262, 226 322, 300 330"
+        fill="none" stroke="#A97A16" stroke-opacity="0.42"
+        stroke-width="10" stroke-dasharray="22 24" stroke-linecap="round"/>
+
+  <!-- X marks the spot -->
+  <g transform="rotate(-6 344 300)" stroke="#A97A16" stroke-width="46"
+     stroke-linecap="round">
+    <path d="M286 242 L 402 358"/>
+    <path d="M402 242 L 286 358"/>
+  </g>
+
+  <!-- The two-tone rule from the wordmark -->
+  <rect x="74" y="436" width="228" height="18" fill="#A97A16"/>
+  <rect x="320" y="436" width="118" height="18" fill="#A5572E"/>
+</svg>
