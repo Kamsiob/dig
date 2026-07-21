@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -27,6 +27,7 @@ from dig.screens.ideas import IdeasScreen
 from dig.storage import Store
 from dig.theme import APPEARANCE_KEY, ThemeManager
 from dig.ui.backdrop import GrainOverlay, MapBackdrop
+from dig.ui.capture import CaptureDialog
 from dig.ui.rail import Rail, SCREENS
 
 MIN_WIDTH = 980
@@ -84,6 +85,8 @@ class MainWindow(QMainWindow):
         self.store = store
         self.theme = theme
         self._current = "home"
+        # Which app was last captured to. Session only, deliberately not saved.
+        self._last_captured_app_id: int | None = None
 
         self.setWindowTitle("Dig")
         self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
@@ -128,6 +131,10 @@ class MainWindow(QMainWindow):
         # Paper grain sits over everything and never takes a click.
         self.grain = GrainOverlay(root)
         self.grain.raise_()
+
+        capture_shortcut = QShortcut(QKeySequence("Ctrl+K"), self)
+        capture_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        capture_shortcut.activated.connect(self.open_capture)
 
         self.theme.changed.connect(self._on_theme_changed)
 
@@ -247,7 +254,19 @@ class MainWindow(QMainWindow):
     # ---------- actions the screens ask for ----------
 
     def open_capture(self) -> None:
-        """The capture dialog arrives with the capture phase."""
+        """Capture one feature or bug against an app, from wherever you are."""
+        dialog = CaptureDialog(
+            self.store, self.theme.palette, self._last_captured_app_id, self
+        )
+        dialog.captured.connect(self._on_captured)
+        dialog.exec()
+
+    def _on_captured(self, app_id: int, _kind: str) -> None:
+        """Remember the app for the rest of the session and refresh what is open."""
+        self._last_captured_app_id = app_id
+        current = self.screens.get(self._current)
+        if current is not None:
+            current.refresh()
 
     def open_idea(self, idea_id: int) -> None:
         """Open one idea for editing."""
