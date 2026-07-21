@@ -3,6 +3,6 @@
 Local-first. Nothing leaves this machine.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 __app_name__ = "Dig"
 __author__ = "Kamsiob"
