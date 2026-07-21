@@ -21,6 +21,7 @@ from dig.screens.base import PlaceholderScreen, Screen
 from dig.screens.app_detail import AppDetailScreen
 from dig.screens.app_editor import AppEditorScreen
 from dig.screens.apps import AppsScreen
+from dig.screens.export import ExportScreen
 from dig.screens.home import HomeScreen
 from dig.screens.idea_editor import IdeaEditorScreen
 from dig.screens.ideas import IdeasScreen
@@ -188,6 +189,8 @@ class MainWindow(QMainWindow):
         app_editor.cancelled.connect(self._leave_app_editor)
         app_editor.created.connect(self.open_app)
         self._add_detail_screen("app_editor", app_editor)
+
+        self.replace_screen("export", ExportScreen(self.store, self.theme.palette))
 
         detail = AppDetailScreen(self.store, self.theme.palette)
         detail.back_requested.connect(lambda: self.go_to("apps"))
