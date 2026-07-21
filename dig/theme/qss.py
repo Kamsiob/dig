@@ -214,6 +214,207 @@ QToolTip {{
     color: {p.ink_dim};
 }}
 
+/* ---------- home: the jot well ---------- */
+
+#BoxLabel {{
+    font-family: "{mono}";
+    font-size: {MONO_SMALL}px;
+    color: {p.ink_dim};
+}}
+
+/* The one well in the app that carries a gold underline: this is where a
+   new idea goes. */
+#JotBox {{
+    background: {p.surface_raised};
+    border: 1px solid {p.seam};
+    border-bottom: 2px solid {p.accent};
+}}
+
+#JotField {{
+    background: transparent;
+    border: none;
+    padding: 0px;
+    font-family: "{serif}";
+    font-size: 19px;
+    color: {p.ink};
+    selection-background-color: {p.accent};
+    selection-color: {p.on_accent};
+}}
+
+#JotHint {{
+    font-family: "{mono}";
+    font-size: 11px;
+    color: {p.ink_faint};
+}}
+
+/* ---------- home: the capture panel ---------- */
+
+/* The only dashed element in Dig, echoing the route on the map. */
+#CapturePanel {{
+    background: {p.surface_raised};
+    border: 2px dashed {p.copper};
+}}
+
+#CapturePanel:hover {{
+    background: {p.surface_deep};
+}}
+
+#CapturePlus {{
+    font-size: 26px;
+    font-weight: 600;
+    color: {p.copper};
+}}
+
+#CaptureLabel {{
+    font-size: 14px;
+    font-weight: 600;
+    color: {p.ink};
+}}
+
+#CaptureSub {{
+    font-size: 12px;
+    color: {p.ink_dim};
+}}
+
+#CaptureKey {{
+    font-family: "{mono}";
+    font-size: {MONO_SMALL}px;
+    color: {p.copper};
+    border: 1px solid {p.copper};
+    padding: 2px 7px;
+}}
+
+/* ---------- ledger rows ---------- */
+
+#RowWhen {{
+    font-family: "{mono}";
+    font-size: 11px;
+    color: {p.ink_faint};
+}}
+
+#RowTitle {{
+    font-family: "{serif}";
+    font-size: 16.5px;
+    font-weight: 600;
+    color: {p.ink};
+}}
+
+#RowTitleDim {{
+    font-family: "{serif}";
+    font-size: 16.5px;
+    font-weight: 600;
+    color: {p.ink_faint};
+}}
+
+#RowSuffix {{
+    font-family: "{mono}";
+    font-size: 11px;
+    color: {p.ink_faint};
+}}
+
+#RowGist {{
+    font-size: 13.5px;
+    color: {p.ink_dim};
+}}
+
+#RowPromote {{
+    background: transparent;
+    border: none;
+    padding: 0px;
+    font-family: "{mono}";
+    font-size: 11px;
+    color: {p.accent};
+    text-align: left;
+}}
+
+#RowPromote:hover, #RowPromote:focus {{
+    color: {p.accent_hover};
+    outline: none;
+}}
+
+#RowDelete {{
+    background: transparent;
+    border: none;
+    padding: 0px 4px;
+    font-family: "{mono}";
+    font-size: 12px;
+    color: {p.ink_faint};
+}}
+
+#RowDelete:hover, #RowDelete:focus {{
+    color: {p.copper};
+    outline: none;
+}}
+
+#EmptyState {{
+    color: {p.ink_faint};
+    font-size: 13.5px;
+    padding: 14px 8px;
+}}
+
+/* ---------- unearthed ---------- */
+
+#Unearthed {{
+    background: {p.surface_raised};
+    border: 1px solid {p.seam};
+}}
+
+#UnearthedBody {{
+    background: transparent;
+}}
+
+#UnearthedTag {{
+    font-family: "{mono}";
+    font-size: {MONO_SMALL}px;
+    font-weight: 500;
+    color: {p.copper};
+}}
+
+#UnearthedTitle {{
+    font-family: "{serif}";
+    font-size: 22px;
+    font-weight: 600;
+    color: {p.ink};
+}}
+
+#UnearthedGist {{
+    font-size: 15px;
+    color: {p.ink_dim};
+}}
+
+#UnearthedMeta {{
+    font-family: "{mono}";
+    font-size: 11px;
+    color: {p.ink_faint};
+}}
+
+#UnearthedOpen {{
+    background: transparent;
+    border: none;
+    padding: 0px;
+    font-size: 13px;
+    font-weight: 600;
+    color: {p.accent};
+}}
+
+#UnearthedOpen:hover, #UnearthedOpen:focus {{
+    color: {p.accent_hover};
+    outline: none;
+}}
+
+#UnearthedAgain {{
+    background: transparent;
+    border: none;
+    padding: 0px;
+    font-size: 13px;
+    color: {p.ink_dim};
+}}
+
+#UnearthedAgain:hover, #UnearthedAgain:focus {{
+    color: {p.ink};
+    outline: none;
+}}
+
 /* ---------- notices ---------- */
 
 #NoticeBar {{

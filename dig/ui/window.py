@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from dig.screens.base import PlaceholderScreen, Screen
+from dig.screens.home import HomeScreen
 from dig.storage import Store
 from dig.theme import APPEARANCE_KEY, ThemeManager
 from dig.ui.backdrop import GrainOverlay, MapBackdrop
@@ -139,6 +140,13 @@ class MainWindow(QMainWindow):
             self.screens[key] = screen
             self.stack.addWidget(screen)
 
+        home = HomeScreen(self.store, self.theme.palette)
+        home.all_ideas_requested.connect(lambda: self.go_to("ideas"))
+        home.capture_requested.connect(self.open_capture)
+        home.idea_opened.connect(self.open_idea)
+        home.promote_requested.connect(self.promote_idea)
+        self.replace_screen("home", home)
+
     def replace_screen(self, key: str, screen: Screen) -> None:
         """Swap a placeholder for the real thing."""
         old = self.screens.get(key)
@@ -183,6 +191,17 @@ class MainWindow(QMainWindow):
         for screen in self.screens.values():
             screen.set_palette(palette)
         self.update()
+
+    # ---------- actions the screens ask for ----------
+
+    def open_capture(self) -> None:
+        """The capture dialog arrives with the capture phase."""
+
+    def open_idea(self, idea_id: int) -> None:
+        """The idea editor arrives with the ideas phase."""
+
+    def promote_idea(self, idea_id: int) -> None:
+        """The promote flow arrives with the ideas phase."""
 
     def show_notice(self, text: str) -> None:
         """Tell the user something plainly, at the top of the content."""

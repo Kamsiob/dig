@@ -27,6 +27,38 @@ def eyebrow(text: str, section: bool = False) -> QLabel:
     return label
 
 
+class WrappedLabel(QLabel):
+    """A word-wrapped label that reserves the height its text actually needs.
+
+    A plain wrapped QLabel reports a height derived from a width the layout has
+    not settled on yet, so a second line ends up painted outside the space it
+    was given. This one re-measures whenever its text or width changes.
+    """
+
+    def __init__(self, text: str = "", parent: QWidget | None = None):
+        super().__init__(text, parent)
+        self.setWordWrap(True)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self._sync_height()
+
+    def _sync_height(self) -> None:
+        width = self.width()
+        if width <= 0:
+            return
+        needed = self.heightForWidth(width)
+        if needed > 0 and self.minimumHeight() != needed:
+            self.setMinimumHeight(needed)
+            self.updateGeometry()
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        self._sync_height()
+
+    def resizeEvent(self, event: object) -> None:
+        super().resizeEvent(event)
+        self._sync_height()
+
+
 class Seam(QFrame):
     """A hairline separator."""
 
