@@ -320,3 +320,30 @@ def test_the_highlight_is_skipped_under_reduced_motion(
 
     row = home._rows[0]
     assert row.styleSheet() == "", "no highlight wash under reduced motion"
+
+
+def test_a_kept_idea_flashes_when_motion_is_allowed(
+    home, qtbot, store: Store, monkeypatch
+):
+    """The save has to be visible, or it is not trusted."""
+    monkeypatch.setattr("dig.screens.home.prefers_reduced_motion", lambda: False)
+    jot(home, qtbot, "Kept with a flash")
+
+    row = home._rows[0]
+    qtbot.waitUntil(lambda: "background: rgba(" in row.styleSheet(), timeout=2000)
+
+    # And it fades back out rather than staying lit.
+    qtbot.waitUntil(lambda: row.styleSheet() == "", timeout=4000)
+
+
+def test_reduced_motion_is_read_from_the_desktop(monkeypatch):
+    from dig.theme import motion
+
+    monkeypatch.setenv("DIG_REDUCED_MOTION", "1")
+    assert motion.prefers_reduced_motion(refresh=True) is True
+
+    monkeypatch.setenv("DIG_REDUCED_MOTION", "0")
+    assert motion.prefers_reduced_motion(refresh=True) is False
+
+    monkeypatch.delenv("DIG_REDUCED_MOTION", raising=False)
+    assert isinstance(motion.prefers_reduced_motion(refresh=True), bool)
