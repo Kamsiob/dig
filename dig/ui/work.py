@@ -16,6 +16,12 @@ class _Signals(QObject):
     failed = Signal(str)
 
 
+# Jobs in flight. Without a reference here, Python is free to collect the job
+# and its signal object while the work is still running, and the completion
+# callback is simply never delivered: the work happens and nothing reacts.
+_in_flight: set[Job] = set()
+
+
 class Job(QRunnable):
     """One piece of work, with its result handed back on the main thread."""
 
@@ -23,6 +29,9 @@ class Job(QRunnable):
         super().__init__()
         self._work = work
         self.signals = _Signals()
+        # Lifetime is managed here, not by the thread pool, so the Python
+        # object outlives the C++ one for as long as the signal needs it.
+        self.setAutoDelete(False)
 
     @Slot()
     def run(self) -> None:
@@ -41,9 +50,19 @@ def run_off_thread(
 ) -> Job:
     """Do `work` in the background and call `on_done` back on the main thread."""
     job = Job(work)
-    job.signals.done.connect(on_done)
-    if on_failed is not None:
-        job.signals.failed.connect(on_failed)
+    _in_flight.add(job)
+
+    def finished(result: Any) -> None:
+        _in_flight.discard(job)
+        on_done(result)
+
+    def failed(message: str) -> None:
+        _in_flight.discard(job)
+        if on_failed is not None:
+            on_failed(message)
+
+    job.signals.done.connect(finished)
+    job.signals.failed.connect(failed)
     QThreadPool.globalInstance().start(job)
     return job
 
