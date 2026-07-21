@@ -1,0 +1,35 @@
+# Python virtual environment (never committed; recreated from requirements.txt)
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Build artifacts
+build/
+dist/
+*.AppImage
+*.AppDir/
+*.spec.bak
+
+# Runtime data — the user's ideas, apps, and attachments never enter the repo
+*.db
+*.db-wal
+*.db-shm
+*.db.broken-*
+attachments/
+
+# Screenshot staging (only curated shots in docs/screenshots/ are committed)
+docs/_staging/
+docs/_demo/
+
+# Test scratch
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor / OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store
