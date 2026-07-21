@@ -178,8 +178,28 @@ def test_every_screen_is_reachable(window):
 
 def test_number_keys_switch_screens(window, qtbot):
     for index, (key, _label, _hint) in enumerate(SCREENS):
+        # Start each hop from a screen with no text field, so the number key
+        # is not being typed into something.
+        window.go_to("export")
+        window.setFocus()
         qtbot.keyClick(window, getattr(Qt.Key, f"Key_{index + 1}"))
         assert window.current_screen_key == key
+
+
+def test_typing_beats_navigation_in_the_jot_field(window, qtbot):
+    """On Home the jot field holds focus, so a digit is a digit.
+
+    Jotting is the point of the screen: a number key typed there belongs in
+    the idea, not in the navigation.
+    """
+    window.go_to("home")
+    jot = window.screens["home"].jot.field
+    qtbot.waitUntil(lambda: jot.hasFocus())
+
+    qtbot.keyClick(jot, Qt.Key.Key_3)
+
+    assert window.current_screen_key == "home"
+    assert jot.toPlainText() == "3"
 
 
 def test_number_keys_are_ignored_while_typing(window, qtbot):
