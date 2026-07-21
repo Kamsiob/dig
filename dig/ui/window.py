@@ -18,7 +18,10 @@ from PySide6.QtWidgets import (
 )
 
 from dig.screens.base import PlaceholderScreen, Screen
+from dig.screens.app_editor import AppEditorScreen
 from dig.screens.home import HomeScreen
+from dig.screens.idea_editor import IdeaEditorScreen
+from dig.screens.ideas import IdeasScreen
 from dig.storage import Store
 from dig.theme import APPEARANCE_KEY, ThemeManager
 from dig.ui.backdrop import GrainOverlay, MapBackdrop
@@ -32,6 +35,14 @@ STATE_KEY = "window_state"
 
 # Screens that show the treasure map behind their content. Home only.
 MAP_SCREENS = {"home"}
+
+# Screens reached from within a section rather than from the rail. The rail
+# keeps the section lit while one of these is open.
+DETAIL_PARENT = {
+    "idea_editor": "ideas",
+    "app_editor": "apps",
+    "app_detail": "apps",
+}
 
 
 class NoticeBar(QWidget):
@@ -147,6 +158,27 @@ class MainWindow(QMainWindow):
         home.promote_requested.connect(self.promote_idea)
         self.replace_screen("home", home)
 
+        ideas = IdeasScreen(self.store, self.theme.palette)
+        ideas.idea_opened.connect(self.open_idea)
+        ideas.promote_requested.connect(self.promote_idea)
+        self.replace_screen("ideas", ideas)
+
+        # Detail screens live in the stack but not in the rail.
+        editor = IdeaEditorScreen(self.store, self.theme.palette)
+        editor.back_requested.connect(lambda: self.go_to("ideas"))
+        editor.promote_requested.connect(self.promote_idea)
+        editor.deleted.connect(lambda _id: self.go_to("ideas"))
+        self._add_detail_screen("idea_editor", editor)
+
+        app_editor = AppEditorScreen(self.store, self.theme.palette)
+        app_editor.cancelled.connect(self._leave_app_editor)
+        app_editor.created.connect(self.open_app)
+        self._add_detail_screen("app_editor", app_editor)
+
+    def _add_detail_screen(self, key: str, screen: Screen) -> None:
+        self.screens[key] = screen
+        self.stack.addWidget(screen)
+
     def replace_screen(self, key: str, screen: Screen) -> None:
         """Swap a placeholder for the real thing."""
         old = self.screens.get(key)
@@ -166,9 +198,17 @@ class MainWindow(QMainWindow):
         screen = self.screens.get(key)
         if screen is None:
             return
+
+        # Anything in flight on the screen being left is written first.
+        leaving = self.screens.get(self._current)
+        if leaving is not None and leaving is not screen:
+            departing = getattr(leaving, "leaving", None)
+            if callable(departing):
+                departing()
+
         self._current = key
         self.stack.setCurrentWidget(screen)
-        self.rail.set_active(key)
+        self.rail.set_active(DETAIL_PARENT.get(key, key))
         self.map_backdrop.setVisible(key in MAP_SCREENS)
         screen.on_shown()
 
@@ -198,10 +238,36 @@ class MainWindow(QMainWindow):
         """The capture dialog arrives with the capture phase."""
 
     def open_idea(self, idea_id: int) -> None:
-        """The idea editor arrives with the ideas phase."""
+        """Open one idea for editing."""
+        editor = self.screens.get("idea_editor")
+        if editor is None:
+            return
+        editor.load(idea_id)
+        self.go_to("idea_editor")
 
     def promote_idea(self, idea_id: int) -> None:
-        """The promote flow arrives with the ideas phase."""
+        """Start the app editor pre-filled from an idea."""
+        editor = self.screens.get("app_editor")
+        if editor is None:
+            return
+        editor.start_from_idea(idea_id)
+        self.go_to("app_editor")
+
+    def new_app(self) -> None:
+        """Start the app editor blank."""
+        editor = self.screens.get("app_editor")
+        if editor is None:
+            return
+        editor.start_blank()
+        self.go_to("app_editor")
+
+    def _leave_app_editor(self) -> None:
+        """Cancelling changes nothing at all."""
+        self.go_to("apps")
+
+    def open_app(self, app_id: int) -> None:
+        """App Detail arrives with the apps phase; land on the list until then."""
+        self.go_to("apps")
 
     def show_notice(self, text: str) -> None:
         """Tell the user something plainly, at the top of the content."""
