@@ -82,7 +82,7 @@ class LedgerRow(QWidget):
             row.addWidget(self.promote, 0, Qt.AlignmentFlag.AlignVCenter)
 
             if show_delete:
-                self.remove = TextButton("✕", "RowDelete")
+                self.remove = TextButton("×", "RowDelete")
                 self.remove.setToolTip("Delete this idea")
                 self.remove.clicked.connect(
                     lambda: self.delete_requested.emit(self.idea.id)

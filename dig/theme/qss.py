@@ -533,6 +533,254 @@ QToolTip {{
     padding: 6px 16px;
 }}
 
+/* ---------- chips: square mono outlines, never filled pills ---------- */
+
+#Chip {{
+    font-family: "{mono}";
+    font-size: {MONO_SMALL}px;
+    color: {p.ink_dim};
+    border: 1px solid {p.seam};
+    padding: 3px 9px;
+}}
+
+#ChipShipped {{
+    font-family: "{mono}";
+    font-size: {MONO_SMALL}px;
+    color: {p.verdigris};
+    border: 1px solid {p.verdigris};
+    padding: 3px 9px;
+}}
+
+/* ---------- app detail ---------- */
+
+#DetailDescription {{
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    padding: 0px;
+    font-size: 15px;
+    color: {p.ink_dim};
+}}
+
+#DetailDescription:hover {{
+    border-bottom: 1px solid {p.seam};
+}}
+
+#DetailDescription:focus {{
+    border-bottom: 1px solid {p.accent};
+    color: {p.ink};
+}}
+
+#MetaLink {{
+    background: transparent;
+    border: none;
+    padding: 0px;
+    font-family: "{mono}";
+    font-size: 11.5px;
+    color: {p.accent};
+    text-align: left;
+}}
+
+/* The GitHub address is both the link and the field that edits it. */
+#MetaLinkField {{
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    padding: 2px 0px;
+    font-family: "{mono}";
+    font-size: 11.5px;
+    color: {p.accent};
+}}
+
+#MetaLinkField:hover {{
+    border-bottom: 1px solid {p.seam};
+}}
+
+#MetaLinkField:focus {{
+    border-bottom: 1px solid {p.accent};
+}}
+
+#MetaLink:hover, #MetaLink:focus {{
+    color: {p.accent_hover};
+    outline: none;
+}}
+
+#MetaField {{
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    padding: 2px 0px;
+    font-family: "{mono}";
+    font-size: 11.5px;
+    color: {p.ink_faint};
+}}
+
+#MetaField:hover {{
+    border-bottom: 1px solid {p.seam};
+}}
+
+#MetaField:focus {{
+    border-bottom: 1px solid {p.accent};
+    color: {p.ink};
+}}
+
+#MetaToggle {{
+    background: transparent;
+    border: none;
+    padding: 0px;
+    font-family: "{mono}";
+    font-size: 11.5px;
+    color: {p.ink_faint};
+}}
+
+#MetaToggle:hover, #MetaToggle:focus {{
+    color: {p.verdigris};
+    outline: none;
+}}
+
+/* The thread back to the jot this app came from. */
+#OriginCallout {{
+    background: {p.surface_raised};
+    border-left: 3px solid {p.accent};
+}}
+
+#OriginTag {{
+    font-family: "{mono}";
+    font-size: 10px;
+    color: {p.accent};
+}}
+
+#OriginText {{
+    font-size: 13.5px;
+    color: {p.ink_dim};
+}}
+
+/* ---------- sheets ---------- */
+
+/* The two rules that name the sheets: gold for what it could do,
+   copper for what is wrong with it. */
+#SheetHeadFeature {{
+    border-bottom: 2px solid {p.accent};
+}}
+
+#SheetHeadBug {{
+    border-bottom: 2px solid {p.copper};
+}}
+
+#SheetCount {{
+    font-family: "{mono}";
+    font-size: 11px;
+    color: {p.ink_faint};
+}}
+
+#SheetMarker {{
+    font-family: "{mono}";
+    font-size: 13px;
+    color: {p.ink_faint};
+}}
+
+#SheetMarkerDone {{
+    font-family: "{mono}";
+    font-size: 13px;
+    color: {p.verdigris};
+}}
+
+#SheetText {{
+    font-size: 14px;
+    color: {p.ink};
+}}
+
+#SheetTextDone {{
+    font-size: 14px;
+    color: {p.ink_faint};
+}}
+
+#SheetAdd {{
+    background: transparent;
+    border: none;
+    padding: 8px 0px 0px 0px;
+    font-family: "{mono}";
+    font-size: 11.5px;
+    color: {p.ink_dim};
+    text-align: left;
+}}
+
+#SheetAdd:hover, #SheetAdd:focus {{
+    color: {p.accent};
+    outline: none;
+}}
+
+#SheetAdd:disabled {{
+    color: {p.ink_faint};
+}}
+
+#SheetAddField {{
+    background: {p.surface_raised};
+    border: 1px solid {p.seam};
+    border-bottom: 2px solid {p.accent};
+    padding: 8px 10px;
+    font-size: 14px;
+    color: {p.ink};
+    margin-top: 6px;
+}}
+
+#SheetAddField:focus {{
+    border: 1px solid {p.accent};
+    border-bottom: 2px solid {p.accent};
+}}
+
+#SheetRemove {{
+    background: transparent;
+    border: none;
+    padding: 0px 4px;
+    font-family: "{mono}";
+    font-size: 12px;
+    color: {p.ink_faint};
+}}
+
+#SheetRemove:hover, #SheetRemove:focus {{
+    color: {p.copper};
+    outline: none;
+}}
+
+#SheetEmpty {{
+    font-size: 13px;
+    color: {p.ink_faint};
+    padding: 10px 4px;
+}}
+
+/* ---------- screenshots and files ---------- */
+
+#Thumb {{
+    background: {p.surface_deep};
+    border: 1px solid {p.seam};
+}}
+
+#ThumbImage {{
+    font-family: "{mono}";
+    font-size: 10px;
+    color: {p.ink_faint};
+    background: transparent;
+}}
+
+#ThumbName {{
+    font-family: "{mono}";
+    font-size: 10px;
+    color: {p.ink_faint};
+}}
+
+#FileName {{
+    font-family: "{mono}";
+    font-size: 12.5px;
+    color: {p.ink_dim};
+}}
+
+#FileSize {{
+    font-family: "{mono}";
+    font-size: 11px;
+    color: {p.ink_faint};
+}}
+
 /* ---------- notices ---------- */
 
 #NoticeBar {{

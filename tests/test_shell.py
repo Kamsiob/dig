@@ -76,6 +76,39 @@ def test_no_os_default_font_for_visible_text(window):
     assert checked > 0
 
 
+def test_every_character_shown_is_in_the_bundled_fonts(window):
+    """No visible glyph may quietly come from an OS font.
+
+    Qt substitutes another font for a character the chosen family lacks, so a
+    missing arrow or check mark looks fine on this machine and wrong on
+    another. ✕ (U+2715) and ↵ (U+21B5) are in none of the three bundled
+    families, which is why × and ↲ are used instead.
+    """
+    from fontTools.ttLib import TTFont
+    from PySide6.QtWidgets import QLabel, QPushButton
+
+    from dig import paths
+
+    covered: set[int] = set()
+    for filename in ("Fraunces-Regular.ttf", "IBMPlexSans-Regular.ttf",
+                     "IBMPlexMono-Regular.ttf"):
+        covered |= set(TTFont(paths.fonts_dir() / filename).getBestCmap().keys())
+
+    shown = ""
+    for widget in window.findChildren(QLabel) + window.findChildren(QPushButton):
+        shown += widget.text()
+
+    missing = {
+        character
+        for character in shown
+        if character not in "\n\t" and ord(character) not in covered
+    }
+    assert not missing, (
+        "these characters are not in any bundled font and would fall back: "
+        + " ".join(f"{c!r} (U+{ord(c):04X})" for c in sorted(missing))
+    )
+
+
 # ---------- palettes ----------
 
 

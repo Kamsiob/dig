@@ -54,7 +54,7 @@ class JotBox(QFrame):
         hint.setObjectName("JotHint")
         row.addWidget(hint, 1, Qt.AlignmentFlag.AlignVCenter)
 
-        self.keep_button = TextButton("Keep it  ↵", "PrimaryButton")
+        self.keep_button = TextButton("Keep it  ↲", "PrimaryButton")
         self.keep_button.clicked.connect(self._keep)
         row.addWidget(self.keep_button, 0, Qt.AlignmentFlag.AlignVCenter)
 
