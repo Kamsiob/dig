@@ -372,10 +372,10 @@ def pixel_diff(a, b) -> tuple[float, int, tuple]:
             if step <= TOLERANCE:
                 continue
             differing += 1
-            worst = max(worst, step)
             column = x // 4
             if column >= SIDEBAR_WIDTH:
                 body += 1
+                worst = max(worst, step)
                 left = min(left, column)
                 right = max(right, column)
                 top = min(top, y)

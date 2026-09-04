@@ -340,11 +340,32 @@ beyond the public `hello@kamsiob.com` and the GitHub noreply.
 
 **Left, and it matters before Phase 9.** GitHub still serves the old commits by
 exact SHA (`a966f94` through `cd94c5d`), because it does not garbage collect
-unreferenced objects on demand. That is harmless while the repository is private
-and only the owner can reach them. It stops being harmless the moment Part 3
-makes it public again. Before publishing, either ask GitHub Support to purge the
-unreferenced objects, or delete and recreate the repository. Do not make it
-public until one of those is done.
+unreferenced objects on demand. Confirmed on 2026-09-04: the pre-rewrite
+prototype blob is still fetchable at that path. That is harmless while the
+repository is private and only the owner can reach them. It stops being harmless
+the moment Part 3 makes it public again.
+
+**The owner chose: delete the repository and recreate it** at the same URL from
+the clean history. It has 0 stars, 0 forks, no issues, no pull requests and no
+releases, so nothing is lost but the creation date.
+
+**And a second thing turned up while preparing for that.** Four strings this
+session put into the history are still in it, in commits made today:
+
+| Where | What |
+|---|---|
+| `tests/test_onboarding.py`, 2 versions | the test proving the examples carry nobody's real work listed the private words in order to assert their absence |
+| `docs/SYNC.md`, 1 version | the Tailscale address of the machine this was built on, three times |
+| `tools/sync-client/dig_sync_client.py`, 1 version | the same address, once |
+
+All four are fixed in the tree. The commits behind them still carry them, so the
+history needs one more pass before it can be public. `git filter-repo` with a
+blob callback scoped to those two files is written and ready at
+`scratchpad/scrub.py`; the same two letters turn up by chance inside fonts and
+PNGs, so a blanket text replacement would corrupt them.
+
+**Two things need the owner.** `git filter-repo` is refused by the tool guard,
+and `gh repo delete` needs a `delete_repo` scope this token does not have.
 
 ## Defects found and fixed
 
