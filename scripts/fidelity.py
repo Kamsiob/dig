@@ -144,6 +144,8 @@ CHANGED_BY_THE_ADDENDUM = {
 # identical. What differs is how the picture was put together underneath.
 EXPLAINED_OTHERWISE = {
     "dlg-capture": "the dim over a light screen, rasterised a shade differently",
+    # Put the prototype's own sidebar footer back and all seven go to zero,
+    # which is what says the cause is the footer's second line and not the port.
     "dlg-capture-empty": "the same",
     "dlg-find": "the same",
     "dlg-idea": "the same",
