@@ -202,6 +202,13 @@ system underneath it.
    is left over is drift. The pixel diff now also reports the box the difference
    sits in, because where it is says more than how much of it there is.
 
+26. **The sidebar footer is allowed a second line.** The brief says to match
+   the prototype, and everywhere else this port does. The footer is the one
+   place where matching it means shipping a horizontal scrollbar and a label
+   broken in half, which is a defect in the prototype rather than a decision in
+   it. Every word and every control is unchanged and it still reads as one
+   footer; it simply wraps when it has to. Checked at all four text sizes.
+
 ## Current state
 
 Addendum Parts 1, 2, 5A and 6 are in, and every defect the adversarial review
@@ -408,20 +415,21 @@ Run it with `./.venv/bin/python scripts/userpass.py --data /tmp/pass`.
    document rather than when Python handed it over, because there is a moment
    between the two in which the old document is still the live one.
 
-## Known defects to fix in Phase 8
+### The two defects inherited from the prototype
 
-Both are inherited from the prototype and both will bite real data, so they are
-logged here rather than fixed quietly out of phase.
+Both were logged during the build rather than fixed quietly out of phase. Both
+are fixed now.
 
-1. **The sidebar footer collides.** At the design's 232px sidebar, Settings,
-   "Shortcuts ?", and the Light / Dark / Auto switch do not fit on one line, so
-   "Shortcuts" wraps onto "Settings" and the sidebar grows a horizontal
-   scrollbar. Confirmed in the prototype itself with real Geist metrics.
-2. **An apostrophe in a stage name or a checklist suggestion breaks its button.**
-   `addExpected`, `addExp`, and `delExp` build single quoted JavaScript string
-   literals inside double quoted HTML attributes. A stage called "Don't ship
-   Friday" would produce a broken handler. The `jsq()` helper added in Phase 2 is
-   the fix; apply it when the pass turns it up.
+5. **The sidebar footer collided.** Settings, "Shortcuts ?", and the Light /
+   Dark / Auto switch come to 214px of content in a 207px sidebar with real
+   Geist, so "Shortcuts" broke away from its "?" and the sidebar grew a sideways
+   scrollbar. Confirmed in the prototype itself. The words and the controls are
+   unchanged; they were given the few pixels they were short, and permission to
+   fall onto a second line rather than break a label in half. See decision 26.
+6. **An apostrophe in a stage name or a checklist suggestion broke its button.**
+   `addExpected`, `addExp`, and `delExp` built single quoted JavaScript string
+   literals inside double quoted HTML attributes, so a stage called "Don't ship
+   Friday" produced a handler that did nothing. They go through `jsq()` now.
 
 ## Known risks
 

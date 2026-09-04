@@ -298,3 +298,59 @@ def test_no_internal_sentinel_ever_reaches_the_person() -> None:
     assert '"reason": "render"' not in source
     assert '"reason": "nothing came back"' not in source
     assert '"reason": str(exc)' not in source, "an exception is not a sentence"
+
+
+def test_an_apostrophe_in_a_stage_name_does_not_break_its_buttons(ui) -> None:
+    """The checklist buttons build JavaScript inside an HTML attribute, so a
+    stage called "Don't ship Friday" would otherwise produce a broken handler
+    and the suggestion could never be added or removed."""
+    ui.run("S.org='Riverbank';S.setupWork.apps=true;obGo(4);obFinish();", settle=600)
+    tid = ui.js("S.types[0].id")
+    ui.run(f"renameStage({tid!r},0,\"Don't ship Friday\");go('settings');", settle=500)
+
+    ui.run(f"addExp({tid!r},\"Don't ship Friday\",\"Ask Kim's team first\");", settle=400)
+    assert ui.js(f"T({tid!r}).check[\"Don't ship Friday\"]") == ["Ask Kim's team first"]
+
+    ui.run("go('settings');", settle=400)
+    body = ui.html()
+    assert "Don&#39;t ship Friday" in body or "Don't ship Friday" in body
+
+    # The remove button has to work when clicked, not only when called.
+    ui.run("document.querySelector('.e .x').click();", settle=500)
+    assert ui.js(f"T({tid!r}).check[\"Don't ship Friday\"]") == [], (
+        "the remove button did nothing"
+    )
+
+
+def test_an_apostrophe_in_a_suggestion_can_still_be_taken_onto_a_project(ui) -> None:
+    ui.run("S.org='Riverbank';S.setupWork.apps=true;obGo(4);obFinish();", settle=600)
+    tid = ui.js("S.types[0].id")
+    stage = ui.js(f"T({tid!r}).stages[0]")
+    ui.run(f"addExp({tid!r},{stage!r},\"Write the client's brief\");", settle=400)
+    ui.run("openNew('apps');document.getElementById('np-n').value='One';createP(null);",
+           settle=600)
+    ui.run("Array.prototype.slice.call(document.querySelectorAll('.main [onclick]'))"
+           ".filter(function(e){return /Write the client/.test(e.textContent)})[0].click();",
+           settle=500)
+    items = ui.js("S.projects[0].items.map(function(i){return i.text})")
+    assert "Write the client's brief" in items, "the suggestion could not be taken on"
+
+
+def test_the_sidebar_never_scrolls_sideways(ui) -> None:
+    """Settings, Shortcuts and the theme switch do not fit on one line at the
+    design's 232px with real Geist, so in the prototype "Shortcuts" breaks away
+    from its "?" and the sidebar grows a sideways scrollbar."""
+    ui.run("S.org='Riverbank';S.setupWork.apps=true;obGo(4);obFinish();", settle=600)
+    for size in ("s", "m", "l", "xl"):
+        ui.run(f"setTextSize({size!r});", settle=400)
+        over = ui.js("(function(){var s=document.querySelector('.side');"
+                     "return s.scrollWidth - s.clientWidth})()")
+        assert over <= 0, f"the sidebar scrolls {over}px sideways at text size {size}"
+
+        broken = ui.js(
+            "(function(){var a=[].slice.call(document.querySelectorAll('.side-foot a'));"
+            "return a.filter(function(e){return e.getBoundingClientRect().height > 26})"
+            ".map(function(e){return e.textContent.trim()})})()"
+        )
+        assert broken == [], f"{broken} is split over two lines at text size {size}"
+    ui.run("setTextSize('m');", settle=400)

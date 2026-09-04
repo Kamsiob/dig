@@ -132,9 +132,12 @@ CHANGED_BY_THE_ADDENDUM = {
     "dlg-keys": "Your week became Your review",
 }
 
-# Every screen carries the sidebar, and the sidebar now says Your review where
-# it said Your week, so no screen can be pixel identical. The comparison
-# measures the rest of the window separately for that reason.
+# Every screen carries the sidebar, and the sidebar differs on purpose: it says
+# Your review where it said Your week, and its footer is allowed a second line
+# rather than breaking "Shortcuts" from its "?" and growing a scrollbar, which
+# is what the prototype does with real Geist. So no screen can be pixel
+# identical including it. The comparison measures the rest of the window
+# separately for that reason.
 SIDEBAR_WIDTH = 232
 
 SCREENS = [
