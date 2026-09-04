@@ -305,6 +305,29 @@ public until one of those is done.
    4, because it blocked the migration tests: a new `hzLabel()` returns
    "Finished", which is the word the rest of the app already uses for that state.
 
+## Where to pick up
+
+In this order. Everything before this is done, tested, committed, and pushed.
+
+1. **Part 7, the feature set.** Group pages (7.1), Your review with periods
+   (7.2), the log on projects and groups (7.3), duplicate and templates (7.4),
+   a Recently deleted screen over the tombstones the store already keeps (7.5),
+   the `dig` command and single instance (7.6), quiet projects (7.7), the People
+   screen (7.8), backup and restore (7.9), CSV import (7.10), text size and the
+   accessibility pass (7.11), Not planned (7.12). The store already carries
+   `log_entries`, `templates`, group descriptions, group links, group files and
+   group decisions, so most of 7.1 and 7.3 is interface work only.
+2. **Part 5B, sync.** The local server bound to Tailscale and loopback only,
+   pairing, the `/v1` API, the conflict policy, the conformance client under
+   `tools/sync-client`, and `docs/SYNC.md`.
+3. **Phase 6 again.** Re-run `scripts/fidelity.py`, which needs its case list
+   updated for the new screens, and do the design consistency pass over
+   everything the prototype does not cover.
+4. **Phase 8**, then **Phase 9**.
+
+Run the suite with `./.venv/bin/python -m pytest tests/ -q`. Compare against the
+prototype with `scripts/fidelity.py`. Drive the real app with `scripts/drive.py`.
+
 ## Known defects to fix in Phase 8
 
 Both are inherited from the prototype and both will bite real data, so they are
@@ -321,6 +344,29 @@ logged here rather than fixed quietly out of phase.
    reviewer's repro. `MainWindow.closeEvent` now refuses the first close, asks
    the interface to hand over what it is holding, waits for it to arrive (up to
    400 ms), writes it, and only then goes.
+
+## Where to pick up
+
+In this order. Everything before this is done, tested, committed, and pushed.
+
+1. **Part 7, the feature set.** Group pages (7.1), Your review with periods
+   (7.2), the log on projects and groups (7.3), duplicate and templates (7.4),
+   a Recently deleted screen over the tombstones the store already keeps (7.5),
+   the `dig` command and single instance (7.6), quiet projects (7.7), the People
+   screen (7.8), backup and restore (7.9), CSV import (7.10), text size and the
+   accessibility pass (7.11), Not planned (7.12). The store already carries
+   `log_entries`, `templates`, group descriptions, group links, group files and
+   group decisions, so most of 7.1 and 7.3 is interface work only.
+2. **Part 5B, sync.** The local server bound to Tailscale and loopback only,
+   pairing, the `/v1` API, the conflict policy, the conformance client under
+   `tools/sync-client`, and `docs/SYNC.md`.
+3. **Phase 6 again.** Re-run `scripts/fidelity.py`, which needs its case list
+   updated for the new screens, and do the design consistency pass over
+   everything the prototype does not cover.
+4. **Phase 8**, then **Phase 9**.
+
+Run the suite with `./.venv/bin/python -m pytest tests/ -q`. Compare against the
+prototype with `scripts/fidelity.py`. Drive the real app with `scripts/drive.py`.
 
 ## Known defects to fix in Phase 8
 
