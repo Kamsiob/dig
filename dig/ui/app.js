@@ -337,7 +337,7 @@ function renderSettings(){
   S.types.map(function(t){return '<div class="box" style="margin-bottom:10px"><div class="srow"><input type="text" value="'+esc(t.name)+'" onchange="T(\''+t.id+'\').name=this.value;render()" style="font-weight:600"><span class="sp"></span><span style="font-size:12px;color:var(--ink-3)">'+S.projects.filter(function(p){return p.type===t.id}).length+' projects</span><span class="del" onclick="delType(\''+t.id+'\')">remove</span></div><div class="stages-ed">'+t.stages.map(function(s,i){return '<span class="stg-chip"><span style="font-family:var(--mono);font-size:10px;color:var(--ink-3)">'+(i+1)+'</span><input value="'+esc(s)+'" onchange="renameStage(\''+t.id+'\','+i+',this.value)"><span class="x" onclick="delStage(\''+t.id+'\','+i+')">✕</span></span>'}).join('')+'<span class="stg-chip add" onclick="addStage(\''+t.id+'\')">+ stage</span></div><div class="exp">'+t.stages.map(function(s){var e=t.check[s]||[];return '<div class="stg-name">'+esc(s)+' checklist suggests</div>'+e.map(function(x,ei){return '<div class="e"><span>· '+esc(x)+'</span><span class="x" onclick="delExp(\''+t.id+'\',\''+esc(s)+'\','+ei+')">remove</span></div>'}).join('')+'<div class="e"><input placeholder="Add something the '+esc(s)+' stage usually needs…" onkeydown="if(event.key===\'Enter\'){addExp(\''+t.id+'\',\''+esc(s)+'\',this.value);this.value=\'\'}"></div>'}).join('')+'</div></div>'}).join('')+
   '<div class="box"><div class="srow"><span class="act" onclick="addType()">+ add a type</span></div></div>'+
   '<h2>Appearance</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Theme</span><div class="theme">'+['light','dark','system'].map(function(m){return '<button class="'+(S.theme===m?'on':'')+'" onclick="setTheme(\''+m+'\')">'+(m==='system'?'Follow system':m[0].toUpperCase()+m.slice(1))+'</button>'}).join('')+'</div></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Motion</span><span>Follows your system\'s reduce-motion setting.</span></div></div>'+
-  '<h2>Your data</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Where it lives</span><span style="font-family:var(--mono);font-size:12px">'+esc(DATA_PATH)+'</span><span class="sp"></span><span class="act" onclick="openDataFolder()">Open folder</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Backup</span><span>Export everything as one file, or bring one back in.</span><span class="sp"></span><span class="act" onclick="exportData()">Export</span><span class="act" onclick="importData()">Import</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Internet</span><span>Never used. Dig makes no network calls.</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">License</span><span>Free and open source, AGPLv3 · <a style="color:var(--blue);cursor:pointer" onclick="toast(\'About dialog lives here in the real app\')">About Dig</a></span></div></div>'+
+  '<h2>Your data</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Where it lives</span><span style="font-family:var(--mono);font-size:12px">'+esc(DATA_PATH)+'</span><span class="sp"></span><span class="act" onclick="openDataFolder()">Open folder</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Backup</span><span>Export everything as one file, or bring one back in.</span><span class="sp"></span><span class="act" onclick="exportData()">Export</span><span class="act" onclick="importData()">Import</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Internet</span><span>Never used. Dig makes no network calls.</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">License</span><span>Free and open source, AGPLv3 · <a style="color:var(--blue);cursor:pointer" onclick="openAbout()">About Dig</a></span></div></div>'+
   '</div></div>';
 }
 function exportData(){
@@ -471,6 +471,26 @@ function delStage(tid,i){var t=T(tid);if(t.stages.length<=2){toast('A type needs
 function addStage(tid){T(tid).stages.push('New stage');render()}
 function addExp(tid,st,val){val=val.trim();if(!val)return;var t=T(tid);(t.check[st]=t.check[st]||[]).push(val);render()}
 function delExp(tid,st,i){T(tid).check[st].splice(i,1);render()}
+
+/* ---- About ---- */
+var ABOUT_LINKS=[
+  ['YouTube','https://youtube.com/@kamsiob','youtube.com/@kamsiob'],
+  ['GitHub','https://github.com/kamsiob','github.com/kamsiob'],
+  ['Website','https://kamsiob.com','kamsiob.com'],
+  ['Buy Me a Coffee','https://buymeacoffee.com/kamsiob','buymeacoffee.com/kamsiob'],
+  ['Telegram','https://t.me/+g5LKm9rUnNcxMjk5','t.me/kamsiob'],
+  ['Feedback','mailto:hello@kamsiob.com','hello@kamsiob.com']];
+var ABOUT_MARK='<svg viewBox="0 0 512 512" width="24" height="24"><g fill="#fff"><rect x="112" y="304" width="76" height="96" rx="26"/><rect x="218" y="216" width="76" height="184" rx="26"/><rect x="324" y="112" width="76" height="288" rx="26"/></g></svg>';
+function openAbout(){
+  dlg('<div class="dh2"><h3>About Dig</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body">'+
+  '<div style="display:flex;align-items:center;gap:14px"><span style="width:44px;height:44px;border-radius:13px;background:var(--blue);box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 6px 16px rgba(36,87,245,.3);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ABOUT_MARK+'</span>'+
+  '<div><div style="font-size:16px;font-weight:600;letter-spacing:-.02em">Dig '+esc(VERSION)+'</div>'+
+  '<div style="font-size:12.5px;color:var(--ink-3);margin-top:2px">Free and open source, AGPLv3. Everything stays on this computer.</div></div></div>'+
+  '<label>Kamsiob</label><div class="box">'+ABOUT_LINKS.map(function(l){
+    return '<div class="row click" onclick="openLink('+jsq(l[1])+')"><div class="grow"><div class="t">'+esc(l[0])+'</div><div class="m">'+esc(l[2])+'</div></div></div>'}).join('')+'</div>'+
+  '<div class="ok" style="margin-top:14px">Built and carried by one person. If software made this way matters to you, there\'s a place to stand behind it. Either way, it\'s yours.</div>'+
+  '</div><div class="foot"><span class="l">Dig makes no network calls.</span><button class="btn" onclick="closeOv()">Close</button><button class="btn p" onclick="openLink(\'https://buymeacoffee.com/kamsiob\')">Support this work</button></div>');
+}
 
 /* ---- PDF exports ----
    Rendered by the web engine from the same classes the screen uses, always in

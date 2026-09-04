@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Run Dig from this folder. Uses the virtual environment install.sh made,
+# and falls back to the system Python if there is not one yet.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -x "$HERE/.venv/bin/python" ]; then
+  exec "$HERE/.venv/bin/python" -m dig "$@"
+fi
+cd "$HERE"
+exec python3 -m dig "$@"

@@ -1,42 +1,33 @@
 #!/usr/bin/env bash
-# Remove Dig for the current user.
+# Remove Dig's launcher, icons, and command from your home folder.
 #
-# Your ideas, apps and attachments are NOT touched. This removes the launcher,
-# the icons and the virtual environment only. The data folder is printed at the
-# end so you can delete it yourself if you want it gone.
+# Your data is never touched. It stays in ~/.local/share/dig, with the
+# attachments and the recovery history, until you delete it yourself.
 
 set -euo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-ICONS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+APPS_DIR="$DATA_HOME/applications"
+ICONS_DIR="$DATA_HOME/icons/hicolor"
 BIN_DIR="$HOME/.local/bin"
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/dig"
 
 say() { printf '%s\n' "$*"; }
 
 say "Removing Dig"
 
-rm -f "$BIN_DIR/dig"
 rm -f "$APPS_DIR/dig.desktop"
+command -v update-desktop-database >/dev/null 2>&1 &&
+  update-desktop-database -q "$APPS_DIR" 2>/dev/null || true
 
 for size in 16 24 32 48 64 128 256 512; do
   rm -f "$ICONS_DIR/${size}x${size}/apps/dig.png"
 done
 rm -f "$ICONS_DIR/scalable/apps/dig.svg"
+command -v gtk-update-icon-cache >/dev/null 2>&1 &&
+  gtk-update-icon-cache -q -t -f "$ICONS_DIR" 2>/dev/null || true
 
-if [ -d "$HERE/.venv" ]; then
-  rm -rf "$HERE/.venv"
-  say "  virtual environment removed"
-fi
-
-command -v update-desktop-database >/dev/null 2>&1 && \
-  update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
-command -v gtk-update-icon-cache >/dev/null 2>&1 && \
-  gtk-update-icon-cache -f -t "$ICONS_DIR" >/dev/null 2>&1 || true
+[ -L "$BIN_DIR/dig" ] && rm -f "$BIN_DIR/dig"
 
 say ""
-say "Dig is removed. Your data was left alone:"
-say "  $DATA_DIR"
-say "Delete that folder yourself if you want the ideas gone too."
+say "Dig is removed."
+say "Your data is still at $DATA_HOME/dig. Delete that folder if you want it gone."

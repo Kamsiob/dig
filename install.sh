@@ -2,15 +2,16 @@
 # Install Dig for the current user only.
 #
 # Nothing is written outside your home folder. No root, no system packages, no
-# useradd, nothing in /usr. That matters on Bazzite and any other image-based
-# system where /usr is read-only.
+# useradd, nothing in /usr. That matters on Bazzite and any other image based
+# system where /usr is read only.
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-ICONS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+APPS_DIR="$DATA_HOME/applications"
+ICONS_DIR="$DATA_HOME/icons/hicolor"
 BIN_DIR="$HOME/.local/bin"
 
 VENV="$HERE/.venv"
@@ -28,55 +29,69 @@ say "Installing Dig from $HERE"
 # ---------- dependencies ----------
 
 if [ ! -d "$VENV" ]; then
-  say "  creating the virtual environment"
-  "$PYTHON" -m venv "$VENV"
+  # If PySide6 is already on this system, reuse it rather than downloading a
+  # second copy of a very large package.
+  if "$PYTHON" -c "import PySide6, PySide6.QtWebEngineWidgets" >/dev/null 2>&1; then
+    say "  creating the virtual environment (reusing the system PySide6)"
+    "$PYTHON" -m venv --system-site-packages "$VENV"
+  else
+    say "  creating the virtual environment"
+    "$PYTHON" -m venv "$VENV"
+  fi
 fi
 
-say "  installing pinned dependencies"
-"$VENV/bin/pip" install --quiet --upgrade pip
-"$VENV/bin/pip" install --quiet -r "$HERE/requirements.txt"
+if ! "$VENV/bin/python" -c "import PySide6.QtWebEngineWidgets" >/dev/null 2>&1; then
+  say "  installing pinned dependencies"
+  "$VENV/bin/pip" install --quiet --upgrade pip
+  "$VENV/bin/pip" install --quiet -r "$HERE/requirements.txt"
+fi
 
-# ---------- launcher ----------
-
-mkdir -p "$BIN_DIR"
-cat > "$BIN_DIR/dig" <<EOF
-#!/usr/bin/env bash
-exec "$VENV/bin/python" "$HERE/app.py" "\$@"
-EOF
-chmod +x "$BIN_DIR/dig"
-say "  launcher at $BIN_DIR/dig"
+if ! "$VENV/bin/python" -c "import PySide6.QtWebEngineWidgets" >/dev/null 2>&1; then
+  say "Dig needs PySide6 with QtWebEngine and it could not be installed."
+  exit 1
+fi
 
 # ---------- icons ----------
 
+say "  installing icons"
 for size in 16 24 32 48 64 128 256 512; do
-  target="$ICONS_DIR/${size}x${size}/apps"
-  mkdir -p "$target"
-  if [ -f "$HERE/assets/icons/dig-${size}.png" ]; then
-    cp "$HERE/assets/icons/dig-${size}.png" "$target/dig.png"
-  fi
+  src="$HERE/assets/icons/dig-$size.png"
+  [ -f "$src" ] || continue
+  dest="$ICONS_DIR/${size}x${size}/apps"
+  mkdir -p "$dest"
+  cp -f "$src" "$dest/dig.png"
 done
-mkdir -p "$ICONS_DIR/scalable/apps"
-cp "$HERE/assets/icons/dig.svg" "$ICONS_DIR/scalable/apps/dig.svg"
-say "  icons in $ICONS_DIR"
+if [ -f "$HERE/assets/icons/dig.svg" ]; then
+  mkdir -p "$ICONS_DIR/scalable/apps"
+  cp -f "$HERE/assets/icons/dig.svg" "$ICONS_DIR/scalable/apps/dig.svg"
+fi
+command -v gtk-update-icon-cache >/dev/null 2>&1 &&
+  gtk-update-icon-cache -q -t -f "$ICONS_DIR" 2>/dev/null || true
 
-# ---------- desktop entry ----------
+# ---------- launcher ----------
 
+say "  installing the launcher"
 mkdir -p "$APPS_DIR"
-sed "s|__EXEC__|$BIN_DIR/dig|" "$HERE/packaging/dig.desktop" > "$APPS_DIR/dig.desktop"
+# The file has to be named dig.desktop: the app calls setDesktopFileName("dig")
+# so KDE Plasma on Wayland groups the window with this launcher.
+sed "s|__EXEC__|$HERE/run|" "$HERE/packaging/dig.desktop" > "$APPS_DIR/dig.desktop"
 chmod +x "$APPS_DIR/dig.desktop"
-say "  launcher entry at $APPS_DIR/dig.desktop"
+command -v update-desktop-database >/dev/null 2>&1 &&
+  update-desktop-database -q "$APPS_DIR" 2>/dev/null || true
 
-# ---------- let the desktop notice ----------
+# ---------- command line ----------
 
-command -v update-desktop-database >/dev/null 2>&1 && \
-  update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
-command -v gtk-update-icon-cache >/dev/null 2>&1 && \
-  gtk-update-icon-cache -f -t "$ICONS_DIR" >/dev/null 2>&1 || true
+mkdir -p "$BIN_DIR"
+ln -sf "$HERE/run" "$BIN_DIR/dig"
 
 say ""
-say "Dig is installed. Find it in your application menu, or run: dig"
+say "Dig is installed."
+say "  Launcher:  $APPS_DIR/dig.desktop"
+say "  Command:   $BIN_DIR/dig"
+say "  Your data: ${XDG_DATA_HOME:-$HOME/.local/share}/dig"
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
-  *) say "Add $BIN_DIR to your PATH to run it by name from a terminal." ;;
+  *) say ""
+     say "  $BIN_DIR is not on your PATH, so the dig command will not be found."
+     say "  Add it, or just launch Dig from your applications menu." ;;
 esac
-say "Your data will live in ${XDG_DATA_HOME:-$HOME/.local/share}/dig"

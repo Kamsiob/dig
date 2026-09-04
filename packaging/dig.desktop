@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
 Name=Dig
-GenericName=App Registry
-Comment=A place to bury ideas and dig them back up
+GenericName=Project Tracker
+Comment=Every project you are working on, in one place
 Exec=__EXEC__
 Icon=dig
 Terminal=false
-Categories=Utility;Development;
-Keywords=ideas;notes;apps;registry;projects;
+Categories=Utility;ProjectManagement;Office;
+Keywords=projects;stages;ideas;roadmap;decisions;
 StartupNotify=true
 StartupWMClass=dig

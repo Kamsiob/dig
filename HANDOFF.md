@@ -46,7 +46,7 @@ Phases are defined in `docs/handoff-v2/BUILD_PLAN.md`. Do not merge or skip them
 - [x] Phase 2: move the prototype in
 - [x] Phase 3: native pieces
 - [x] Phase 4: setup defaults and migration
-- [ ] Phase 5: desktop integration
+- [x] Phase 5: desktop integration
 - [ ] Phase 6: fidelity pass
 - [ ] Phase 7: automated tests
 - [ ] Phase 8: scripted user testing
@@ -128,7 +128,12 @@ system underneath it.
 17. **`exportJson` is handed the live document.** SPEC writes it as
    `exportJson()`. The freshest state lives in the interface, not on disk, so the
    slot takes the document to write rather than racing the debounced save.
-18. **The web view is hard-wired to this computer.** A URL request interceptor
+18. **The icon is three ascending bars.** DESIGN asks for "a simple white upward
+   step arrow (three ascending bars, the middle one taller)". Ascending and
+   middle-tallest cannot both hold, so the icon follows the primary description:
+   three bars climbing left to right on the blue rounded square, which is what
+   reads as stages. `scripts/build_icons.py` redraws the whole set.
+19. **The web view is hard-wired to this computer.** A URL request interceptor
    refuses every scheme except file, qrc, data, blob, and about, so "no network
    calls" is enforced rather than merely intended. Navigation away from the one
    local document is refused and handed to `openUrl` instead. The context menu is
@@ -137,7 +142,7 @@ system underneath it.
 
 ## Current state
 
-Phase 4 complete. Setup defaults and the v1 migration are in.
+Phase 5 complete. The app has an icon, a launcher, and an About dialog.
 
 `dig/ui/` holds `index.html`, `app.css`, `app.js`, the six Geist weights the
 design calls for (SIL OFL, license alongside them), and the vendored
@@ -156,6 +161,18 @@ and walks a JSON plan of steps, recording values and screenshots. It can queue
 answers for file dialogs with `--open` and `--save`, because a modal dialog has
 nobody to click it in a headless run. The fidelity pass, the test suite, and the
 scripted user pass all run on it.
+
+Desktop integration verified on this machine: `install.sh` writes only under
+`$HOME` (icons into `~/.local/share/icons/hicolor`, `dig.desktop` into
+`~/.local/share/applications`, a `dig` symlink into `~/.local/bin`), reuses the
+system PySide6 rather than downloading a second copy, and the app reports
+`desktopFileName = dig` on `platform = wayland`, which is what makes KDE Plasma
+group the window with the launcher. Confirmed running on the real display at
+device pixel ratio 1 with Geist.
+
+The owner's real v1 profile at `~/.local/share/dig` has NOT been migrated. It is
+backed up in this session's scratchpad, and every test runs against a throwaway
+`XDG_DATA_HOME`. Migration happens the first time they launch it themselves.
 
 `dig/migrate_v1.py` runs on the first launch that finds a v1 file: it copies the
 old database to `dig-v1.db.bak` first, renames each app's attachment folder to
