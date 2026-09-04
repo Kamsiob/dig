@@ -354,3 +354,23 @@ def test_the_sidebar_never_scrolls_sideways(ui) -> None:
         )
         assert broken == [], f"{broken} is split over two lines at text size {size}"
     ui.run("setTextSize('m');", settle=400)
+
+
+def test_settings_writes_the_data_path_the_way_a_person_does(ui, tmp_path) -> None:
+    """The design writes it as ~/.local/share/dig/dig.db. Spelling out the home
+    folder would also put someone's user name on screen every time they showed
+    their window to anyone."""
+    ui.run("S.org='Riverbank';S.setupWork.apps=true;obGo(4);obFinish();", settle=600)
+    ui.run("go('settings');", settle=700)
+    shown = ui.js("DATA_PATH")
+    assert shown.endswith("dig.db")
+    assert shown in ui.html(), "the path on screen is not the one Dig reports"
+    assert str(Path.home()) not in shown, (
+        f"the home folder is spelled out on screen: {shown!r}"
+    )
+
+    # The ordinary case, where the data does live under the home folder.
+    from dig.bridge import _tilde
+
+    assert _tilde(Path.home() / ".local/share/dig/dig.db") == "~/.local/share/dig/dig.db"
+    assert _tilde(Path("/somewhere/else/dig.db")) == "/somewhere/else/dig.db"

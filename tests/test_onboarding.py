@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import re
 
 
 def walk(ui, org="Example Studio", you="Alex", kinds=("apps",), examples=False) -> None:
@@ -119,14 +119,28 @@ def test_the_examples_are_generic_and_complete(ui) -> None:
 
 
 def test_the_examples_carry_none_of_anyones_real_work(ui) -> None:
-    walk(ui, examples=True)
+    """The examples are fixed and generic, and are written before anything the
+    person typed. This test deliberately names nothing private: writing the
+    words down here to check they are absent would put them back in the repo,
+    which is the thing being guarded against."""
+    org, you = "Northwind Holdings", "Marguerite"
+    walk(ui, org=org, you=you, kinds=("apps", "clients", "personal"), examples=True)
     everything = " ".join(
-        [p["name"] + p["notes"] for p in ui.js("S.projects")]
+        [p["name"] + p["notes"] + (p["next"] or "") for p in ui.js("S.projects")]
         + [i["text"] + i["desc"] for i in ui.js("S.ideas")]
         + [l["title"] + l["meta"] for l in ui.js("S.library")]
+        + [u["text"] for u in ui.js("S.inbox")]
     )
-    for private in ("Kamsiob", "Wellbeing", "Marchmont", "C9", "Riverbank Care", "@"):
-        assert private not in everything
+    assert org not in everything, "an example picked up the organization's name"
+    assert you not in everything, "an example picked up the person's name"
+    assert "@" not in everything, "an example carries something address shaped"
+    assert not re.search(r"\b\d{1,3}(\.\d{1,3}){3}\b", everything), (
+        "an example carries something that looks like an address on a network"
+    )
+
+    assert all(p["example"] for p in ui.js("S.projects")), (
+        "something that is not an example turned up among them"
+    )
 
 
 def test_the_examples_come_out_in_one_click(ui) -> None:
@@ -207,3 +221,19 @@ def test_start_here_survives_a_restart_until_it_is_finished(ui) -> None:
     ui.restart()
     assert ui.count(".starthere") == 1
     assert ui.count(".starthere .step.ok") == 1
+
+
+def test_the_personal_example_goes_in_the_personal_group(ui) -> None:
+    """Taking the second group instead put a kitchen renovation in with the
+    clients, which is the first thing a person would see and disbelieve."""
+    walk(ui, kinds=("apps", "clients", "personal"), examples=True)
+    where = {p["name"]: p["group"] for p in ui.js("S.projects")}
+    assert where["Kitchen renovation"] == "personal"
+    assert where["Website refresh"] == "apps"
+    assert where["New client onboarding"] == "clients"
+
+
+def test_the_personal_example_still_lands_when_there_is_no_personal_group(ui) -> None:
+    walk(ui, kinds=("apps",), examples=True)
+    where = {p["name"]: p["group"] for p in ui.js("S.projects")}
+    assert set(where.values()) == {"apps"}, "with one group everything is in it"

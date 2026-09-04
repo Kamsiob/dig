@@ -415,18 +415,36 @@ Run it with `./.venv/bin/python scripts/userpass.py --data /tmp/pass`.
    document rather than when Python handed it over, because there is a moment
    between the two in which the old document is still the live one.
 
+5. **The example set put a kitchen renovation in with the clients.** It took
+   the first two groups regardless of what they were. Each example now goes in
+   the group it obviously belongs to, when that group exists.
+6. **Settings spelled out the home folder.** The design writes the data path as
+   `~/.local/share/dig/dig.db`; the port printed the absolute path, which also
+   put the person's user name on screen whenever they showed their window to
+   anyone. The comparison had a seam papering over exactly this, which is what
+   a seam is for and also how it stayed hidden. The seam is gone and the path is
+   written the way the design writes it.
+7. **The public copy carried a real Tailscale address.** `docs/SYNC.md` and the
+   conformance client used the address of the machine this was built on as
+   their example. Replaced with one that is plainly an illustration.
+8. **A test named the private words it was checking for.** The test that proves
+   the examples carry nobody's real work listed those words in order to assert
+   their absence, which put them back in the repository. It now checks the
+   property instead: nothing in the examples matches what the person typed, and
+   nothing in them is address shaped.
+
 ### The two defects inherited from the prototype
 
 Both were logged during the build rather than fixed quietly out of phase. Both
 are fixed now.
 
-5. **The sidebar footer collided.** Settings, "Shortcuts ?", and the Light /
+9. **The sidebar footer collided.** Settings, "Shortcuts ?", and the Light /
    Dark / Auto switch come to 214px of content in a 207px sidebar with real
    Geist, so "Shortcuts" broke away from its "?" and the sidebar grew a sideways
    scrollbar. Confirmed in the prototype itself. The words and the controls are
    unchanged; they were given the few pixels they were short, and permission to
    fall onto a second line rather than break a label in half. See decision 26.
-6. **An apostrophe in a stage name or a checklist suggestion broke its button.**
+10. **An apostrophe in a stage name or a checklist suggestion broke its button.**
    `addExpected`, `addExp`, and `delExp` built single quoted JavaScript string
    literals inside double quoted HTML attributes, so a stage called "Don't ship
    Friday" produced a handler that did nothing. They go through `jsq()` now.

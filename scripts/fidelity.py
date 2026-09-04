@@ -208,8 +208,6 @@ SEAMS = [
      "onclick=\"closeOv();toast('In the real app this saves the file.')\""),
     (r'onclick="finishSetup\(\)"',
      "onclick=\"go('home');toast('You\\'re set. Press Ctrl K any time to add something.')\""),
-    (r'<span style="font-family:var\(--mono\);font-size:12px">[^<]*dig\.db</span>',
-     '<span style="font-family:var(--mono);font-size:12px">~/.local/share/dig/dig.db</span>'),
 ]
 
 # The addendum asked for things that show up on every screen rather than on one.

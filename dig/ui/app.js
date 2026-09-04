@@ -1308,7 +1308,14 @@ function obFinish(){
 /* ---- the examples, which are nobody's real work ---- */
 function addExamples(){
   if(S.projects.some(function(p){return p.example}))return;
-  var gWork=S.groups[0],gHome=S.groups[1]||S.groups[0];
+  /* Each example goes in the group it would obviously belong to, if that
+     group exists, and in the first group otherwise. Taking the first two
+     groups regardless put a kitchen renovation in with the clients. */
+  var pick=function(id,fallback){
+    return S.groups.find(function(g){return g.id===id})||fallback||S.groups[0]};
+  var gWork=pick('apps');
+  var gClient=pick('clients',gWork);
+  var gHome=pick('personal',S.groups.filter(function(g){return g.priv})[0]||S.groups[1]);
   /* One type across all four, so the examples read as one coherent pipeline
      using whichever stages this person actually chose. */
   var t=S.types[0],t2=t;
@@ -1327,7 +1334,7 @@ function addExamples(){
   wr.people=[{id:uid(),n:'Client',r:'approver'}];
   wr.links=['example.com'];
 
-  var nco=mk('New client onboarding',gWork,t,0,3,'next','','');
+  var nco=mk('New client onboarding',gClient,t,0,3,'next','','');
   nco.wait={what:'the signed agreement',since:day(3)};
 
   var qr=mk('Quarterly report',gWork,t2,1,9,'now','Pull the numbers for section two','');

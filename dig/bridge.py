@@ -252,6 +252,19 @@ body{padding:0;display:block;background:#fff}
 """
 
 
+def _tilde(path: Path) -> str:
+    """A path with the home folder written the way a person writes it.
+
+    Settings puts this on screen, and the design writes it as
+    ~/.local/share/dig/dig.db. Spelling out the home folder would also put
+    someone's user name on screen every time they shared their window.
+    """
+    try:
+        return "~/" + str(Path(path).relative_to(Path.home()))
+    except ValueError:
+        return str(path)
+
+
 class Bridge(QObject):
     """Everything the interface asks this computer to do."""
 
@@ -394,7 +407,7 @@ class Bridge(QObject):
                 "recovered": result.recovered,
                 "theme": self.theme(),
                 "reduceMotion": read_reduce_motion(),
-                "dataPath": str(paths.db_path()),
+                "dataPath": _tilde(paths.db_path()),
                 "version": __version__,
                 "device": result.meta.get("device_name", ""),
                 "schema": result.meta.get("schema_version", 0),

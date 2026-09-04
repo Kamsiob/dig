@@ -13,6 +13,8 @@ no cloud. Sync is off by default, and when you turn it on it is a direct
 connection between your own devices on your own private network, with nothing
 passing through anyone else's servers.
 
+![Home, in light](docs/screenshots/home-light.png)
+
 ## What it does
 
 - **Projects and stages.** Every project has a type, and a type decides which
@@ -45,6 +47,27 @@ passing through anyone else's servers.
   days. Back up everything, including your files, as one zip.
 - **Sharing.** A PDF of one project, of your projects, of the roadmap, or of the
   week. Private groups never appear, and every export says what was left out.
+
+## What it looks like
+
+| | |
+|---|---|
+| ![Home, in dark](docs/screenshots/home-dark.png) | ![Projects](docs/screenshots/projects.png) |
+| Home in the dark. The same four things, whichever way your desktop is set. | Every project, by group, with how far along each one is. |
+| ![The roadmap](docs/screenshots/roadmap.png) | ![A project](docs/screenshots/project-work.png) |
+| Now, Next, Later, Someday. No dates, no dragging. | One project: its stages, its next step, its checklist, its people and files. |
+| ![A project's roadmap](docs/screenshots/project-roadmap.png) | ![A project's record](docs/screenshots/project-record.png) |
+| How long each stage took, and what shipped. | Decisions, numbered and dated, and the log of what happened. |
+| ![A group](docs/screenshots/group.png) | ![Your review](docs/screenshots/review.png) |
+| A group's own page: what it is for, where everything in it has got to. | Written from what actually happened. Nothing is made up. |
+| ![Add something](docs/screenshots/capture.png) | ![Settings](docs/screenshots/settings.png) |
+| <kbd>Ctrl</kbd> <kbd>K</kbd> from anywhere. It says where what you typed is going. | Groups, types, stages, sync, backups, text size. |
+
+![The welcome](docs/screenshots/welcome.png)
+
+The first run walks through five steps and can be replayed any time from
+Settings. It can put a small set of example projects in so there is something
+to look at, and take them all out again in one click.
 
 ## What Dig is not
 
