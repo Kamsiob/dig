@@ -397,6 +397,22 @@ class Bridge(QObject):
         self._motion = read_reduce_motion()
         return self._motion
 
+    @Slot(float, result=bool)
+    def setZoom(self, factor: float) -> bool:
+        """Scale the whole interface. Settings, Appearance, Text size.
+
+        The interface sizes its text in pixels throughout, so a larger base
+        size alone would move a few things and leave the rest. The web engine's
+        own zoom scales the words, the boxes and the space between them
+        together, which is what a person means by larger text.
+        """
+        window = self._window
+        page = getattr(window, "page", None)
+        if page is None:
+            return False
+        page.setZoomFactor(max(0.5, min(3.0, float(factor) or 1.0)))
+        return True
+
     def recheck_motion(self) -> None:
         """Re-read the desktop's reduce-motion setting and tell the interface.
 

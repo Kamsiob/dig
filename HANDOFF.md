@@ -184,6 +184,24 @@ system underneath it.
    cut down to Cut, Copy, Paste, and Select all, because a browser's Back and
    Reload menu inside a desktop app is wrong.
 
+24. **Text size scales the interface through the web engine's zoom.** 7.11 asks
+   for a control that scales the interface. The prototype's CSS sizes nearly
+   every piece of text in pixels, so moving a base size would have moved the
+   sidebar and left everything else. Rewriting every size into `em` would have
+   meant changing hundreds of the prototype's own numbers, which the brief
+   forbids. `Bridge.setZoom` sets the page's zoom factor instead, which scales
+   the words, the boxes and the space between them together. A CSS `zoom`
+   fallback covers the fidelity harness, which runs the interface with no bridge.
+25. **The fidelity harness distinguishes the addendum from drift.** The addendum
+   changed things that appear on every screen: group pages rerouted the sidebar,
+   the log joined the Record tab, files became real, and every control gained a
+   name for a screen reader. Comparing raw markup after that would have reported
+   every screen as different and said nothing. `ADDENDUM_APP` and
+   `ADDENDUM_PROTO` in `scripts/fidelity.py` bring both sides to the same place
+   first, each rule naming the part of the addendum that asked for it, so what
+   is left over is drift. The pixel diff now also reports the box the difference
+   sits in, because where it is says more than how much of it there is.
+
 ## Current state
 
 Addendum Parts 1, 2, 5A and 6 are in, and every defect the adversarial review
@@ -326,68 +344,83 @@ public until one of those is done.
 1. **Opening a finished project rendered nothing.** Advancing into a last stage
    sets the horizon to `done`, which is not one of the four roadmap columns, so
    the project page's `HZ.find(...)[1]` threw on undefined and the whole view
-   went blank. Confirmed in the prototype itself (open a project in its last stage). Fixed in Phase
-   4, because it blocked the migration tests: a new `hzLabel()` returns
-   "Finished", which is the word the rest of the app already uses for that state.
-
-## Where to pick up
-
-1. **Phase 6 again.** Re-run `scripts/fidelity.py` against the prototype for the
-   screens the prototype covers. Its case list needs updating for the new ones,
-   and the light palette now deliberately differs (see decision 20), so the
-   comparison needs a note or a token override. Then a design consistency pass
-   over the group page, the review, the viewer, onboarding, and the sync panel.
-2. **Phase 8**, the scripted user pass, extended as the addendum lists.
-3. **Phase 9**: screenshots with example data only, the release, the AppImage,
-   publishing, and replacing the local install.
-
-**Before Phase 9 publishing**, settle the GitHub residue described above.
-
-Run the suite with `./.venv/bin/python -m pytest tests/ -q`. Compare against the
-prototype with `scripts/fidelity.py`. Drive the real app with `scripts/drive.py`.
+   went blank. Confirmed in the prototype itself. Fixed in Phase 4, because it
+   blocked the migration tests: a new `hzLabel()` returns "Finished", which is
+   the word the rest of the app already uses for that state.
+2. **The last thing typed before quitting was lost.** The interface held a
+   change for 150 ms before handing it over, and the window closed straight
+   away, so anything typed in that instant never reached the disk. Worst for
+   Notes and Next step, which save without re-rendering. `MainWindow.closeEvent`
+   now refuses the first close, asks the interface to hand over what it is
+   holding, waits up to 400 ms, writes it, and only then goes.
+3. **An empty project type bricked the app.** `createP` would write `type:""`,
+   and every screen that looked the type up then threw. Guards in `openNew` and
+   `createP`, a fallback in `T()`, and `delType` keeping the last type.
+4. **Undo on a stage move deleted the wrong activity.** `LAST_ADVANCE` now
+   captures what the move wrote so undo puts back exactly that.
+5. **Your review was still called Your week in two places.** The sidebar was
+   renamed but the release dialog's helper line and one toast were not. Found by
+   the Phase 6 markup comparison.
+6. **The Share button on a group page shared every project.** `doShare` had no
+   case for a group, so `g:<id>` fell through to the whole projects page. Part
+   7.1 asks for a group one pager. `pdfGroup` and `openShareGroup` now build
+   it: what the group is, where each project has got to, the decisions, and
+   what shipped. A private group says it is private and shows nothing else.
+7. **Text size only moved the sidebar.** The interface sizes nearly every piece
+   of text itself, in pixels, so setting a base size alone left the rest where
+   it was. 7.11 asks for a control that scales the interface, so text size now
+   goes through the web engine's own zoom, with a CSS fallback when there is no
+   bridge. See decision 24.
 
 ## Known defects to fix in Phase 8
 
 Both are inherited from the prototype and both will bite real data, so they are
 logged here rather than fixed quietly out of phase.
 
-4. **The sidebar footer collides.** At the design's 232px sidebar, Settings,
+1. **The sidebar footer collides.** At the design's 232px sidebar, Settings,
    "Shortcuts ?", and the Light / Dark / Auto switch do not fit on one line, so
    "Shortcuts" wraps onto "Settings" and the sidebar grows a horizontal
    scrollbar. Confirmed in the prototype itself with real Geist metrics.
-2. **The last thing typed before quitting was lost.** The interface holds a
-   change for 150 ms before handing it over, and the window closed straight
-   away, so anything typed in that instant never reached the disk. Worst for
-   Notes and Next step, which save without re-rendering. Found by an adversarial
-   reviewer's repro. `MainWindow.closeEvent` now refuses the first close, asks
-   the interface to hand over what it is holding, waits for it to arrive (up to
-   400 ms), writes it, and only then goes.
+2. **An apostrophe in a stage name or a checklist suggestion breaks its button.**
+   `addExpected`, `addExp`, and `delExp` build single quoted JavaScript string
+   literals inside double quoted HTML attributes. A stage called "Don't ship
+   Friday" would produce a broken handler. The `jsq()` helper added in Phase 2 is
+   the fix; apply it when the pass turns it up.
+
+## Known risks
+
+- QtWebEngine on Wayland needs checking for the correct scale factor and for
+  `setDesktopFileName` grouping.
+
+## Phase 6, how it came out
+
+`scripts/fidelity.py` puts the app and the prototype side by side on the same
+data, with the clock frozen, the same bundled fonts, no animation, no caret, and
+the window focus handed to each in turn. Eighty two cases, every screen and
+every dialog, in both themes.
+
+- 74 of 82 are markup identical. The eight that are not are Your review, the
+  Library, and Settings, in both themes, which the addendum redesigned.
+- 24 of 82 are pixel identical outside the sidebar. Every screen carries the
+  sidebar, and the sidebar now says Your review where it said Your week, so no
+  screen can be identical including it.
+- 0 differ with no reason to. Every remaining difference is named in
+  `CHANGED_BY_THE_ADDENDUM` and the report says the box it sits in.
+- No network request was made by either side.
+
+Three things the comparison turned up were fixed rather than excused: the
+release dialog and one toast still said Your week, the new project dialog
+carried a stray empty div, and the group page's Share button shared every
+project instead of that group.
 
 ## Where to pick up
 
-1. **Phase 6 again.** Re-run `scripts/fidelity.py` against the prototype for the
-   screens the prototype covers. Its case list needs updating for the new ones,
-   and the light palette now deliberately differs (see decision 20), so the
-   comparison needs a note or a token override. Then a design consistency pass
-   over the group page, the review, the viewer, onboarding, and the sync panel.
-2. **Phase 8**, the scripted user pass, extended as the addendum lists.
-3. **Phase 9**: screenshots with example data only, the release, the AppImage,
+1. **Phase 8**, the scripted user pass, extended as the addendum's Phase 8
+   additions list. `scripts/userpass.py` is that pass.
+2. **Phase 9**: screenshots with example data only, the release, the AppImage,
    publishing, and replacing the local install.
 
 **Before Phase 9 publishing**, settle the GitHub residue described above.
 
 Run the suite with `./.venv/bin/python -m pytest tests/ -q`. Compare against the
 prototype with `scripts/fidelity.py`. Drive the real app with `scripts/drive.py`.
-
-## Known defects to fix in Phase 8
-
-3. **An apostrophe in a stage name or a checklist suggestion breaks its button.**
-   `addExpected`, `addExp`, and `delExp` build single quoted JavaScript string
-   literals inside double quoted HTML attributes. A stage called "Don't ship
-   Friday" would produce a broken handler. The `jsq()` helper added in Phase 2 is
-   the fix; apply it in Phase 8 when the pass turns it up.
-
-## Known risks
-
-- QtWebEngine on Wayland needs checking for the correct scale factor and for
-  `setDesktopFileName` grouping.

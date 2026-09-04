@@ -71,6 +71,18 @@ document.fonts.ready.then(function(){{window.__fontsReady=1}});
 1
 """
 
+# Both palettes were moved to meet WCAG AA (see HANDOFF decision 19): the light
+# one in seven places, the dark one only in the third rank of text. For the
+# comparison the prototype's original values go back, so what is measured is the
+# port rather than that one deliberate decision.
+PROTOTYPE_PALETTE = (
+    "var s=document.createElement('style');"
+    "s.textContent=':root[data-theme=\"light\"]{--ink-3:#8593A6;--teal:#0BA39E;"
+    "--green:#1E9E5A;--amber:#D9890B;--coral:#E4573F;--rose:#D14A7A;--red:#D64545}"
+    ":root[data-theme=\"dark\"]{--ink-3:#5E6C82}';"
+    "document.head.appendChild(s);1"
+)
+
 STILL = (
     "var s=document.createElement('style');"
     "s.textContent='*{animation:none!important;transition:none!important;"
@@ -84,8 +96,48 @@ REFOCUS = (
     "#dlg-body select');if(f)f.focus();1"
 )
 
+# Screens the addendum deliberately changed. They are compared, and what differs
+# is expected to be exactly the addition.
+CHANGED_BY_THE_ADDENDUM = {
+    "setup": "replaced by the five step onboarding",
+    "home": "a soft line about projects that have gone quiet, and the Start here card",
+    "week": "Your week became Your review, with a period and a scope",
+    "week-private": "the same",
+    "settings": "sync, templates, recently deleted, people, text size, backups",
+    "project-work": "a More button, and Add files instead of the stand-in dialog",
+    "project-work-wait": "the same",
+    "project-empty": "the same",
+    "project-rec": "the log",
+    "project-rec-empty": "the log",
+    "library": "files listed alongside links and notes, and an Add files button",
+    "library-unsorted": "the same",
+    "dlg-library-move": "the library underneath it",
+    "project-rm": "a More button in the header",
+    "project-rm-empty": "the same",
+    "dlg-decision": "the record tab underneath it, which now carries the log",
+    "dlg-wait": "the same",
+    "dlg-person": "the same",
+    "dlg-release": "the same",
+    "dlg-link": "the same",
+    "dlg-share-project": "the same",
+    "dlg-advance": "the work tab underneath it",
+    "dlg-advance-clean": "the same",
+    "projects": "one more way to sort the list, for what has gone quiet",
+    "projects-waiting": "the same",
+    "projects-finished": "the same",
+    "projects-parked": "the same",
+    "projects-group": "the same",
+    "dlg-new": "the same",
+    "dlg-share-projects": "the same",
+    "dlg-keys": "Your week became Your review",
+}
+
+# Every screen carries the sidebar, and the sidebar now says Your review where
+# it said Your week, so no screen can be pixel identical. The comparison
+# measures the rest of the window separately for that reason.
+SIDEBAR_WIDTH = 232
+
 SCREENS = [
-    ("setup", "S.view='setup'"),
     ("home", "S.view='home';S.filterGroup='all'"),
     ("projects", "S.view='projects';S.sort='activity';S.filterGroup='all'"),
     ("projects-waiting", "S.view='projects';S.sort='waiting'"),
@@ -157,9 +209,65 @@ SEAMS = [
      '<span style="font-family:var(--mono);font-size:12px">~/.local/share/dig/dig.db</span>'),
 ]
 
+# The addendum asked for things that show up on every screen rather than on one.
+# Leaving them in would drown the comparison, so each side is brought to the
+# same place first and what is left over is drift. Every rule here names the
+# part of the addendum that asked for it.
+ADDENDUM_APP = [
+    # Part 7, text size and accessibility: the keyboard and screen reader
+    # attributes are additions to the prototype's markup, not changes to it.
+    (r'\s(?:tabindex="[^"]*"|role="[^"]*"|aria-[a-z-]+="[^"]*")', ""),
+    # Part 6, files: anywhere can be dropped on, so the veil sits in the shell.
+    (r'<div class="drop-veil" id="drop-veil">.*?</div></div>', ""),
+    # Part 7, group pages: a group heading on the Projects list opens the group.
+    (r'<span class="n" style="cursor:pointer" onclick="openG\(\'[^\']*\'\)">',
+     '<span class="n">'),
+    # Part 7, duplicate, template, not planned and delete live behind More.
+    (r'<button class="btn" onclick="openProjectMore\(\'[^\']*\'\)">More</button>', ""),
+    # Part 1, the Start here card ticks itself off as the work gets done.
+    (r";tickStartHere\(&#39;[a-zA-Z]+&#39;\)", ""),
+    (r";tickStartHere\('[a-zA-Z]+'\)", ""),
+    # Part 7, the log on the Record tab, which also shows under six dialogs.
+    (r'<div class="sec-t" style="margin-top:22px"><h2>Log</h2>.*?'
+     r'(?=<div class="sec-t" style="margin-top:22px"><h2>Past waits</h2>)', ""),
+    # Part 6, files are first class, so the stand-in became the real thing.
+    (r'<a class="rt" onclick="addFiles\(\'([^\']*)\',\'\'\)">\+ add files</a>',
+     '<a class="rt" onclick="addFile(\'\\1\')">+ add</a>'),
+    (r'<button class="btn" onclick="addFiles\(\'\',\'\'\)">Add files</button>', ""),
+    (r" Drop them anywhere on this page\.| Drop a file anywhere on this page\.", ""),
+    (r'<div class="filerow" onclick="openFile\(\'[^\']*\'\)">'
+     r'<span class="ic ([A-Z]+)"[^>]*>\1</span><div class="grow">'
+     r'<div class="n">([^<]*)</div><div class="m">[^<]*</div></div></div>',
+     r'<div class="file"><span class="ic \1">\1</span><div>\2<div class="m">v1</div>'
+     r'</div></div>'),
+]
+
+ADDENDUM_PROTO = [
+    # Part 7, group pages: a group in the sidebar used to filter the list.
+    # Everything is not a real group, so it still only filters.
+    # A chip on the Ideas list still filters; only the sidebar opens a group.
+    ("<a class=\"([^\"]*)\" onclick=\"setGroup\\('(?!all')([a-z0-9]+)'\\)",
+     "<a class=\"\\1\" onclick=\"openG('\\2')"),
+    ("onclick=\"S\\.filterGroup='([a-z0-9]+)';go\\('projects'\\)",
+     "onclick=\"openG('\\1')"),
+    # Part 7, reviews with periods: Your week became Your review.
+    (r"Your week", "Your review"),
+    # Part 7, quiet projects: one more way to sort the list.
+    (r'<option value="parked"([^>]*)>Only parked</option>',
+     r'<option value="parked"\1>Only parked</option>'
+     r'<option value="quiet">Only gone quiet</option>'),
+]
+
 
 def normalize(markup: str) -> str:
-    for pattern, replacement in SEAMS:
+    for pattern, replacement in ADDENDUM_APP + SEAMS:
+        markup = re.sub(pattern, replacement, markup, flags=re.S)
+    return markup
+
+
+def forward(markup: str) -> str:
+    """The prototype's markup, brought forward to what the addendum asked for."""
+    for pattern, replacement in ADDENDUM_PROTO:
         markup = re.sub(pattern, replacement, markup)
     return markup
 
@@ -209,14 +317,23 @@ class Page:
         return self.js("document.getElementById('app').innerHTML") or ""
 
 
-def pixel_diff(a, b) -> tuple[float, int]:
-    """Share of pixels that differ, and how many."""
+def pixel_diff(a, b) -> tuple[float, int, tuple]:
+    """Share of pixels that differ, how many of them outside the sidebar, and
+    the box those sit in.
+
+    The sidebar is counted but not located, because Your week became Your
+    review and that alone puts a difference on all eighty two screens. What
+    matters is the rest of the window: a change the addendum asked for shows up
+    in one region, and drift shows up somewhere it has no business being.
+    """
     if a.size() != b.size():
-        return 100.0, -1
+        return 100.0, -1, ()
     a = a.convertToFormat(a.Format.Format_RGB32)
     b = b.convertToFormat(b.Format.Format_RGB32)
     width, height = a.width(), a.height()
     differing = 0
+    body = 0
+    left, top, right, bottom = width, height, -1, -1
     for y in range(height):
         row_a = bytes(a.constScanLine(y))[: width * 4]
         row_b = bytes(b.constScanLine(y))[: width * 4]
@@ -225,7 +342,15 @@ def pixel_diff(a, b) -> tuple[float, int]:
         for x in range(0, width * 4, 4):
             if row_a[x : x + 3] != row_b[x : x + 3]:
                 differing += 1
-    return (differing * 100.0 / (width * height)), differing
+                column = x // 4
+                if column >= SIDEBAR_WIDTH:
+                    body += 1
+                    left = min(left, column)
+                    right = max(right, column)
+                    top = min(top, y)
+                    bottom = max(bottom, y)
+    box = (left, top, right, bottom) if body else ()
+    return (differing * 100.0 / (width * height)), body, box
 
 
 def main() -> int:
@@ -297,6 +422,7 @@ def main() -> int:
     real.settle(2500)
     real.js(APP_PREP)
     real.js(STILL)
+    real.js(PROTOTYPE_PALETTE)
     real.await_fonts()
     real.js("render();1")
     real.settle(400)
@@ -328,9 +454,9 @@ def main() -> int:
 
             proto_image = proto.shoot(out / "proto" / f"{label}.png")
             app_image = real.shoot(out / "app" / f"{label}.png")
-            share, count = pixel_diff(proto_image, app_image)
+            share, count, box = pixel_diff(proto_image, app_image)
 
-            proto_markup = proto.markup()
+            proto_markup = forward(proto.markup())
             app_markup = normalize(real.markup())
             same_markup = proto_markup == app_markup
             if not same_markup:
@@ -342,18 +468,38 @@ def main() -> int:
                     "case": label,
                     "pixel_pct": round(share, 4),
                     "pixels": count,
+                    "box": list(box),
                     "markup_identical": same_markup,
                 }
             )
-            flag = "" if (share == 0 and same_markup) else "   <-- LOOK"
+            note = CHANGED_BY_THE_ADDENDUM.get(name, "")
+            if count == 0 and same_markup:
+                flag = ""
+            elif note:
+                flag = f"   expected: {note}"
+            else:
+                flag = "   <-- LOOK"
+            where = (
+                f"  {count} outside the sidebar, in "
+                f"{box[0]},{box[1]} to {box[2]},{box[3]}"
+                if box else "  none outside the sidebar"
+            )
             print(
                 f"{label:36s} pixels {share:7.4f}%  markup "
-                f"{'same' if same_markup else 'DIFFERS'}{flag}",
+                f"{'same' if same_markup else 'DIFFERS'}{flag}{where}",
                 flush=True,
             )
 
-    clean = [f for f in findings if f["pixel_pct"] == 0 and f["markup_identical"]]
-    print(f"\n{len(clean)} of {len(findings)} cases identical")
+    clean = [f for f in findings if f["pixels"] == 0 and f["markup_identical"]]
+    drifted = [
+        f for f in findings
+        if not (f["pixels"] == 0 and f["markup_identical"])
+        and f["case"].rsplit("-", 1)[0] not in CHANGED_BY_THE_ADDENDUM
+    ]
+    print(f"\n{len(clean)} of {len(findings)} cases identical to the prototype"
+          " outside the sidebar")
+    print(f"{len(findings) - len(clean) - len(drifted)} differ where the addendum changed them")
+    print(f"{len(drifted)} differ with no reason to: " + (", ".join(f["case"] for f in drifted) or "none"))
     if console:
         print("console messages:", console)
     print("blocked requests, app:", window.interceptor.blocked)

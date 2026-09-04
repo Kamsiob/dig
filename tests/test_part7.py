@@ -56,6 +56,33 @@ def test_a_group_can_be_edited_from_its_page(ui) -> None:
     )
 
 
+def test_a_group_shares_as_its_own_one_pager(ui, tmp_path: Path) -> None:
+    """The Share button on a group page has to give you that group, not every
+    project you own."""
+    started(ui)
+    gid = ui.js("S.groups[0].id")
+    ui.run(f"openG({gid!r});G({gid!r}).description='What we look after.';render();")
+    ui.run(f"openShare('g:'+{gid!r});", settle=400)
+    preview = ui.html("#dlg-body")
+    assert ui.js("G(%r).name" % gid) in preview
+    assert "What we look after." in preview
+
+    out = tmp_path / "group.pdf"
+    ui.queue_save(str(out))
+    ui.run(f"doShare('g:'+{gid!r});", settle=3000)
+    assert out.exists() and out.stat().st_size > 1000
+    assert out.read_bytes()[:5] == b"%PDF-"
+
+
+def test_a_private_group_shares_nothing_but_says_so(ui) -> None:
+    started(ui, kinds=("apps", "personal"))
+    gid = ui.js("S.groups.find(function(g){return g.priv}).id")
+    page = ui.js(f"pdfGroup(G({gid!r}))")
+    assert "This group is private" in page
+    assert ui.js("S.projects.find(function(p){return p.group===%r}).name" % gid) \
+        not in page, "a private group must not name its projects in a shared page"
+
+
 def test_a_group_decision_shares_the_numbering(ui) -> None:
     started(ui)
     gid = ui.js("S.groups[0].id")
@@ -451,6 +478,23 @@ def test_the_text_size_can_be_changed_and_is_remembered(ui) -> None:
     ui.restart()
     assert ui.js("S.textSize") == "l"
     assert ui.js("getComputedStyle(document.body).fontSize") == "15.5px"
+
+
+def test_a_larger_text_size_scales_the_whole_interface(ui) -> None:
+    """7.11 asks for a control that scales the interface, not only the base."""
+    started(ui)
+    normal = ui.js("document.querySelector('.hd h1').getBoundingClientRect().height")
+    room = ui.js("window.innerWidth")
+
+    ui.run("setTextSize('xl');", settle=400)
+    assert ui.js("window.innerWidth") < room, "the interface did not scale"
+    assert ui.js("document.querySelector('.hd h1').getBoundingClientRect().height") > normal
+
+    ui.run("setTextSize('s');", settle=400)
+    assert ui.js("window.innerWidth") > room, "smaller did not go the other way"
+
+    ui.run("setTextSize('m');", settle=400)
+    assert ui.js("window.innerWidth") == room, "default did not come back"
 
 
 def test_everything_clickable_can_be_reached_by_keyboard(ui) -> None:

@@ -837,11 +837,19 @@ function typeNamed(name){
 }
 
 /* ======================= TEXT SIZE (7.11) ======================= */
-var TEXT_SIZES=[['s','Small','13px'],['m','Default','14px'],['l','Large','15.5px'],['xl','Larger','17px']];
+var TEXT_SIZES=[['s','Small','13px',.93],['m','Default','14px',1],
+  ['l','Large','15.5px',1.11],['xl','Larger','17px',1.21]];
+/* The prototype sizes nearly every piece of text itself, in pixels, so setting
+   a base size alone would move the sidebar and leave everything else where it
+   was. Scaling the whole interface is what 7.11 asks for and is what a person
+   means by larger text: the words, the boxes around them, and the space
+   between, all in proportion. */
 function applyTextSize(){
   var found=TEXT_SIZES.find(function(x){return x[0]===(S.textSize||'m')})||TEXT_SIZES[1];
   document.documentElement.style.setProperty('--base',found[2]);
   document.body.style.fontSize=found[2];
+  if(BRIDGE&&BRIDGE.setZoom){BRIDGE.setZoom(found[3])}
+  else{document.body.style.zoom=found[3]===1?'':found[3]}
 }
 function setTextSize(v){S.textSize=v;applyTextSize();render()}
 function applyMotionAndSize(){applyTextSize()}
@@ -1409,7 +1417,7 @@ function startIdea(id){var x=S.ideas.find(function(y){return y.id===id});openNew
 function openNew(gid,from){
   if(!S.types.length){toast('Add a project type in Settings first. Every project moves through one.');return}
   dlg('<div class="dh2"><h3>'+(from?'Start this idea as a project':'New project')+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>Name</label><input type="text" id="np-n" value="'+esc(from?from.text:'')+'" placeholder="What is it called?"><div class="row2"><div><label>Group</label><select id="np-g">'+S.groups.map(function(g){return '<option value="'+g.id+'" '+(gid===g.id?'selected':'')+'>'+esc(g.name)+'</option>'}).join('')+'</select></div><div><label>Type</label><select id="np-t">'+S.types.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+' · '+t.stages.join(' → ')+'</option>'}).join('')+'</select></div></div>'+
-    ((S.templates||[]).length?'<label>Start from a template</label><select id="np-tpl"><option value="">Start from nothing</option>'+S.templates.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+'</option>'}).join('')+'</select>':'')+'<div style="display:none"></div><div class="row2"><div><label>First next step</label><input type="text" id="np-x" placeholder="The first thing that moves it forward"></div><div><label>On the roadmap</label><select id="np-w">'+HZ.map(function(h){return '<option value="'+h[0]+'" '+(h[0]==='next'?'selected':'')+'>'+h[1]+'</option>'}).join('')+'</select></div></div><div class="helper">It starts at the first stage of its type. Its group decides whether it can be shared.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="createP('+(from?"'"+from.id+"'":'null')+')">Create</button></div>')}
+    ((S.templates||[]).length?'<label>Start from a template</label><select id="np-tpl"><option value="">Start from nothing</option>'+S.templates.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+'</option>'}).join('')+'</select>':'')+'<div class="row2"><div><label>First next step</label><input type="text" id="np-x" placeholder="The first thing that moves it forward"></div><div><label>On the roadmap</label><select id="np-w">'+HZ.map(function(h){return '<option value="'+h[0]+'" '+(h[0]==='next'?'selected':'')+'>'+h[1]+'</option>'}).join('')+'</select></div></div><div class="helper">It starts at the first stage of its type. Its group decides whether it can be shared.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="createP('+(from?"'"+from.id+"'":'null')+')">Create</button></div>')}
 function createP(fromId){var n=document.getElementById('np-n').value.trim();if(!n)return;var gid=document.getElementById('np-g').value,tid=document.getElementById('np-t').value;
   if(!tid||!S.types.some(function(t){return t.id===tid})){toast('Add a project type in Settings first. Every project moves through one.');return}var np={id:uid(),name:n,group:gid,type:tid,stage:0,enteredAt:NOW,when:document.getElementById('np-w').value,next:document.getElementById('np-x').value,items:[],decisions:[],files:[],links:[],notes:'',pub:!G(gid).priv,wait:null,lastAct:NOW,releases:[],people:[],hist:[],quiet:false,origin:null,parked:false,waitHist:[]};var tplEl=document.getElementById('np-tpl');
   if(tplEl&&tplEl.value)np=applyTemplate(np,tplEl.value);
@@ -1453,10 +1461,38 @@ function recordDecision(pid,text,sup){text=(text||'').trim();if(!text)return;var
 /* links, files, people, releases */
 function addLink(id){dlg('<div class="dh2"><h3>Add a link</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>Address or name</label><input type="text" id="lk" placeholder="github.com/… or Google Play"></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="var t=document.getElementById(\'lk\').value.trim();if(t){Pr(\''+id+'\').links.push(t)};closeOv();render()">Add</button></div>')}
 function addPerson(id){dlg('<div class="dh2"><h3>Add a person</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="row2"><div><label>Name</label><input type="text" id="pn" placeholder="Who"></div><div><label>Role</label><input type="text" id="pr" placeholder="reviewer, client, collaborator"></div></div><div class="helper">Just a name and a role. Dig is not a contact list.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="var n=document.getElementById(\'pn\').value.trim();if(n){Pr(\''+id+'\').people.push({n:n,r:document.getElementById(\'pr\').value})};closeOv();render()">Add</button></div>')}
-function addRelease(id){dlg('<div class="dh2"><h3>Record a release</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="row2"><div><label>Version</label><input type="text" id="rv" placeholder="1.2.0"></div><div><label>What\'s in it</label><input type="text" id="rn" placeholder="One line"></div></div><div class="helper">Dated today. Shows up on the project\'s roadmap and in Your week.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="doRelease(\''+id+'\')">Record</button></div>')}
+function addRelease(id){dlg('<div class="dh2"><h3>Record a release</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="row2"><div><label>Version</label><input type="text" id="rv" placeholder="1.2.0"></div><div><label>What\'s in it</label><input type="text" id="rn" placeholder="One line"></div></div><div class="helper">Dated today. Shows up on the project\'s roadmap and in Your review.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="doRelease(\''+id+'\')">Record</button></div>')}
 function doRelease(id){var v=document.getElementById('rv').value.trim();if(!v)return;var p=Pr(id);p.releases.push({v:v,at:NOW,note:document.getElementById('rn').value});log(p,p.name+' '+v+' released','ship');closeOv();render();toast('<b>'+esc(p.name)+' '+esc(v)+'</b> is on the record')}
 /* share */
-function openShare(id){var p=id&&id!=='rm'?Pr(id):null;var pubP=S.projects.filter(function(y){return y.pub&&!G(y.group).priv});var isRm=id==='rm';dlg('<div class="dh2"><h3>'+(p?'Share '+esc(p.name):(isRm?'Share the roadmap':'Share your projects'))+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="share-prev">'+(p?'<div class="h">'+esc(p.name)+'</div><div class="s">'+esc(T(p.type).name)+' · '+esc(G(p.group).name)+' · '+esc(stageName(p))+'</div><div class="row3"><div><b>'+(p.stage+1)+' of '+T(p.type).stages.length+'</b><small>stages</small></div><div><b>'+p.items.filter(function(x){return x.done}).length+'</b><small>done</small></div><div><b>'+p.releases.length+'</b><small>releases</small></div></div><div style="color:var(--ink-2)">'+(esc(p.notes)||'No notes yet.')+'</div>':'<div class="h">'+esc(S.org)+(isRm?' · Roadmap':'')+'</div><div class="s">'+pubP.length+' shareable projects · '+S.groups.filter(function(g){return g.priv}).length+' private groups left out</div><div class="row3">'+(isRm?HZ.slice(0,3).map(function(h){return '<div><b>'+pubP.filter(function(y){return (y.when||'later')===h[0]}).length+'</b><small>'+h[1]+'</small></div>'}).join(''):'<div><b>'+S.projects.filter(function(y){return !y.quiet&&!y.parked}).length+'</b><small>active</small></div><div><b>'+S.activity.filter(function(a){return a.kind==='ship'&&days(a.at)<=90}).length+'</b><small>shipped this quarter</small></div><div><b>'+S.projects.reduce(function(s,y){return s+y.decisions.length},0)+'</b><small>decisions on record</small></div>')+'</div><div style="color:var(--ink-2)">Private groups never appear here. The page says so at the bottom.</div>')+'</div></div><div class="foot"><span class="l">Saves a PDF or an image, made on this computer.</span><button class="btn" onclick="closeOv()">Close</button><button class="btn p" onclick="doShare('+(id?jsq(id):'null')+')">Save</button></div>')}
+/* The preview for a group says what the page will hold, in the group's own
+   words, so nothing about it is a surprise once it is a file. */
+function openShareGroup(g){
+  if(!g)return;
+  var mine=S.projects.filter(function(p){return p.group===g.id});
+  var live=mine.filter(function(p){return !p.parked});
+  var decisions=mine.reduce(function(n,p){
+    return n+p.decisions.filter(function(d){return !d.superseded}).length},0);
+  var releases=mine.reduce(function(n,p){return n+p.releases.length},0);
+  dlg('<div class="dh2"><h3>Share '+esc(g.name)+'</h3>'+
+  '<span class="x" onclick="closeOv()">✕</span></div><div class="body">'+
+  '<div class="share-prev" style="--gc:'+g.color+'">'+
+    '<div class="h">'+esc(g.name)+'</div>'+
+    '<div class="s">'+esc(S.org||'Dig')+' · '+live.length+
+      (live.length===1?' project':' projects')+'</div>'+
+    '<div class="row3"><div><b>'+live.length+'</b><small>projects</small></div>'+
+    '<div><b>'+decisions+'</b><small>decisions</small></div>'+
+    '<div><b>'+releases+'</b><small>releases</small></div></div>'+
+    '<div style="color:var(--ink-2)">'+
+      (g.priv?'This group is private, so the page says that and shows nothing else.'
+            :(esc(g.description)||'No description yet.'))+'</div>'+
+  '</div></div><div class="foot">'+
+  '<span class="l">Saves a PDF, made on this computer.</span>'+
+  '<button class="btn" onclick="closeOv()">Close</button>'+
+  '<button class="btn p" onclick="doShare('+jsq('g:'+g.id)+')">Save</button></div>');
+}
+function openShare(id){
+  if(id&&String(id).indexOf('g:')===0)return openShareGroup(G(String(id).slice(2)));
+  var p=id&&id!=='rm'?Pr(id):null;var pubP=S.projects.filter(function(y){return y.pub&&!G(y.group).priv});var isRm=id==='rm';dlg('<div class="dh2"><h3>'+(p?'Share '+esc(p.name):(isRm?'Share the roadmap':'Share your projects'))+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="share-prev">'+(p?'<div class="h">'+esc(p.name)+'</div><div class="s">'+esc(T(p.type).name)+' · '+esc(G(p.group).name)+' · '+esc(stageName(p))+'</div><div class="row3"><div><b>'+(p.stage+1)+' of '+T(p.type).stages.length+'</b><small>stages</small></div><div><b>'+p.items.filter(function(x){return x.done}).length+'</b><small>done</small></div><div><b>'+p.releases.length+'</b><small>releases</small></div></div><div style="color:var(--ink-2)">'+(esc(p.notes)||'No notes yet.')+'</div>':'<div class="h">'+esc(S.org)+(isRm?' · Roadmap':'')+'</div><div class="s">'+pubP.length+' shareable projects · '+S.groups.filter(function(g){return g.priv}).length+' private groups left out</div><div class="row3">'+(isRm?HZ.slice(0,3).map(function(h){return '<div><b>'+pubP.filter(function(y){return (y.when||'later')===h[0]}).length+'</b><small>'+h[1]+'</small></div>'}).join(''):'<div><b>'+S.projects.filter(function(y){return !y.quiet&&!y.parked}).length+'</b><small>active</small></div><div><b>'+S.activity.filter(function(a){return a.kind==='ship'&&days(a.at)<=90}).length+'</b><small>shipped this quarter</small></div><div><b>'+S.projects.reduce(function(s,y){return s+y.decisions.length},0)+'</b><small>decisions on record</small></div>')+'</div><div style="color:var(--ink-2)">Private groups never appear here. The page says so at the bottom.</div>')+'</div></div><div class="foot"><span class="l">Saves a PDF or an image, made on this computer.</span><button class="btn" onclick="closeOv()">Close</button><button class="btn p" onclick="doShare('+(id?jsq(id):'null')+')">Save</button></div>')}
 /* settings */
 function addGroup(){S.groups.push({id:uid(),name:'New group',color:'#D14A7A',priv:false});render()}
 function delGroup(id){if(S.projects.some(function(p){return p.group===id})){toast('Move its projects to another group first');return}S.groups=S.groups.filter(function(g){return g.id!==id});render()}
@@ -1828,12 +1864,14 @@ function slug(s){return String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').repla
 
 function savePdfWeek(){
   var el=document.querySelector('.sheet');
-  if(!el){toast('Open Your week first.');return}
+  if(!el){toast('Open Your review first.');return}
   sendPdf(el.outerHTML,'your-week.pdf');
 }
 function doShare(id){
   var body,name;
-  if(id&&id!=='rm'){var p=Pr(id);if(!p)return;body=pdfProject(p);name=slug(p.name)+'.pdf'}
+  if(id&&String(id).indexOf('g:')===0){var g=G(String(id).slice(2));if(!g)return;
+    body=pdfGroup(g);name=slug(g.name)+'.pdf'}
+  else if(id&&id!=='rm'){var p=Pr(id);if(!p)return;body=pdfProject(p);name=slug(p.name)+'.pdf'}
   else if(id==='rm'){body=pdfRoadmap();name='roadmap.pdf'}
   else{body=pdfProjects();name='projects.pdf'}
   closeOv();sendPdf(body,name);
@@ -1864,6 +1902,45 @@ function pdfProjects(){
     (groups.length?groups.map(function(g){var list=ps.filter(function(p){return p.group===g.id});
       return '<div class="grp" style="--gc:'+g.color+'"><div class="grp-h"><span class="n"><span class="dotc" style="background:'+g.color+'"></span>'+esc(g.name)+'</span><span class="c">'+list.length+'</span></div><div class="cards">'+list.map(card).join('')+'</div></div>'}).join(''):'<div class="box empty"><b>Nothing to share yet</b>Every project you have is in a private group.</div>')+
     pdfFoot(esc(omitted())+'. Private groups never appear here.');
+}
+/* One group on one page: what it is, where each project has got to, what was
+   decided, and what shipped. A private group says so and shows nothing else,
+   the same rule the rest of the sharing follows. */
+function pdfGroup(g){
+  var mine=S.projects.filter(function(p){return p.group===g.id});
+  var live=mine.filter(function(p){return !p.parked});
+  if(g.priv)return pdfTop(esc(g.name),'A private group')+
+    '<div class="box empty"><b>This group is private</b>'+
+    'A private group never leaves this computer, so there is nothing to share.</div>'+
+    pdfFoot('Private groups never appear in anything shared.');
+  var decisions=[];
+  mine.forEach(function(p){p.decisions.forEach(function(d){
+    if(!d.superseded)decisions.push({p:p,d:d})})});
+  decisions.sort(function(a,b){return new Date(b.d.at)-new Date(a.d.at)});
+  var releases=[];
+  mine.forEach(function(p){p.releases.forEach(function(r){releases.push({p:p,r:r})})});
+  releases.sort(function(a,b){return new Date(b.r.at)-new Date(a.r.at)});
+
+  return pdfTop(esc(g.name),live.length+(live.length===1?' project':' projects'))+
+    (g.description?'<div style="color:var(--ink-2);margin-bottom:14px">'+esc(g.description)+'</div>':'')+
+    '<div class="grp" style="--gc:'+g.color+'"><div class="grp-h"><span class="n">'+
+      '<span class="dotc" style="background:'+g.color+'"></span>'+esc(g.name)+'</span>'+
+      '<span class="c">'+live.length+'</span></div>'+
+      (live.length?'<div class="cards">'+live.map(card).join('')+'</div>'
+        :'<div class="box empty"><b>Nothing in this group yet</b>'+
+         'Add a project, or move one here from Settings.</div>')+'</div>'+
+    (decisions.length?'<h2 class="pdf-h">Decisions</h2><div class="box">'+
+      decisions.slice(0,12).map(function(x){
+        return '<div class="dec"><b>'+dno(x.d.no)+'</b><span>'+esc(x.d.text)+'</span>'+
+          '<span class="sd">'+esc(x.p.name)+' · '+fmt(x.d.at)+'</span></div>'}).join('')+
+      '</div>':'')+
+    (releases.length?'<h2 class="pdf-h">Released</h2><div class="box">'+
+      releases.slice(0,12).map(function(x){
+        return '<div class="rel"><span class="v">'+esc(x.r.v)+'</span>'+
+          '<span>'+esc(x.p.name)+(x.r.note?' · '+esc(x.r.note):'')+'</span>'+
+          '<span class="m">'+fmt(x.r.at)+'</span></div>'}).join('')+
+      '</div>':'')+
+    pdfFoot('One group, shared on purpose. Private groups never appear here.');
 }
 function pdfRoadmap(){
   var ps=pdfSafe().filter(function(p){return !p.quiet});
