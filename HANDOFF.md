@@ -45,7 +45,7 @@ Phases are defined in `docs/handoff-v2/BUILD_PLAN.md`. Do not merge or skip them
 - [x] Phase 1: shell and bridge
 - [x] Phase 2: move the prototype in
 - [x] Phase 3: native pieces
-- [ ] Phase 4: setup defaults and migration
+- [x] Phase 4: setup defaults and migration
 - [ ] Phase 5: desktop integration
 - [ ] Phase 6: fidelity pass
 - [ ] Phase 7: automated tests
@@ -137,7 +137,7 @@ system underneath it.
 
 ## Current state
 
-Phase 3 complete. Files, export, import, and PDF are real.
+Phase 4 complete. Setup defaults and the v1 migration are in.
 
 `dig/ui/` holds `index.html`, `app.css`, `app.js`, the six Geist weights the
 design calls for (SIL OFL, license alongside them), and the vendored
@@ -156,6 +156,16 @@ and walks a JSON plan of steps, recording values and screenshots. It can queue
 answers for file dialogs with `--open` and `--save`, because a modal dialog has
 nobody to click it in a headless run. The fidelity pass, the test suite, and the
 scripted user pass all run on it.
+
+`dig/migrate_v1.py` runs on the first launch that finds a v1 file: it copies the
+old database to `dig-v1.db.bak` first, renames each app's attachment folder to
+its new project ID, and writes the v2 document through the normal atomic save.
+If anything fails, nothing is deleted and the person is told plainly.
+
+Test counts so far: 17 storage, 18 migration, 16 setup, 6 migrated-install, all
+57 green. `tests/uiharness.py` starts the real window against a data folder the
+test owns and runs JavaScript in it synchronously, so a test reads the app's own
+state back rather than a stand in for it.
 
 Phase 3 verified end to end in the running app: a file picker copies into
 `attachments/{project_id}/` with `(2)` style collision suffixes, export writes
@@ -176,6 +186,15 @@ There is real v1 data on this machine at `~/.local/share/dig/dig.db`: one app
 ("Dig", shipped, created 2026-07-21), no ideas, no sheet items, no attachments,
 plus the v1 `appearance` and `window_geometry` settings. The migration must
 handle it and keep the original file as `dig-v1.db.bak`.
+
+## Defects found and fixed
+
+1. **Opening a finished project rendered nothing.** Advancing into a last stage
+   sets the horizon to `done`, which is not one of the four roadmap columns, so
+   the project page's `HZ.find(...)[1]` threw on undefined and the whole view
+   went blank. Confirmed in the prototype itself (open a project in its last stage). Fixed in Phase
+   4, because it blocked the migration tests: a new `hzLabel()` returns
+   "Finished", which is the word the rest of the app already uses for that state.
 
 ## Known defects to fix in Phase 8
 

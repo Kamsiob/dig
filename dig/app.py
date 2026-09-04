@@ -42,6 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     from PySide6.QtWidgets import QApplication
 
     from dig.bridge import Bridge
+    from dig.migrate_v1 import migrate_if_needed
     from dig.storage import StateStore
     from dig.window import MainWindow
 
@@ -61,7 +62,10 @@ def main(argv: list[str] | None = None) -> int:
     paths.ensure_data_dirs()
     store = StateStore(paths.db_path(), paths.history_dir())
 
+    migration_notice = migrate_if_needed(store)
     result = store.load()
+    if migration_notice and not result.notice:
+        result.notice = migration_notice
 
     bridge = Bridge(store)
     window = MainWindow(bridge)
