@@ -62,10 +62,10 @@ Phases as restructured by the addendum's Part 8.
 - [x] Phase 3: native pieces (basic files, export, import, PDF)
 - [x] Phase 3R: the full Part 6 file pipeline
 - [x] Phase 4: setup defaults and v1 migration
-- [ ] Phase 4.5: the Part 7 feature set
+- [x] Phase 4.5: the Part 7 feature set
 - [x] Phase 5: desktop integration
 - [x] Phase 5.5: Part 1 onboarding
-- [ ] Phase 5.75: Part 5B sync server, conformance client, docs/SYNC.md
+- [x] Phase 5.75: Part 5B sync server, conformance client, docs/SYNC.md
 - [~] Phase 6: fidelity pass (done against the prototype; redo after the above)
 - [ ] Phase 7: automated tests, extended
 - [ ] Phase 8: scripted user testing, extended
@@ -152,7 +152,32 @@ system underneath it.
    middle-tallest cannot both hold, so the icon follows the primary description:
    three bars climbing left to right on the blue rounded square, which is what
    reads as stages. `scripts/build_icons.py` redraws the whole set.
-19. **The web view is hard-wired to this computer.** A URL request interceptor
+19. **The light palette is a little darker than DESIGN.md's, to meet WCAG AA.**
+   The addendum's 7.11 says contrast must meet AA in both themes and any failure
+   must be fixed. Measured, the light theme failed: `--ink-3` was 2.76:1 on
+   `--panel-2` where helper text needs 4.5, and teal, green, amber, coral, and
+   rose were all between 2.46 and 3.48 on their own soft backgrounds. Each was
+   moved the minimum distance to reach 4.5, keeping its hue and saturation:
+   ink-3 #8593A6 to #606F84, teal #0BA39E to #087A77, green #1E9E5A to #187C47,
+   amber #D9890B to #9A6108, coral #E4573F to #C5341C, rose #D14A7A to #BF3163,
+   red #D64545 to #C23B3B, and dark ink-3 #5E6C82 to #7B89A0. Dark mode passed
+   everywhere else. This is the one place the app deliberately differs from the
+   prototype's palette, and `test_the_contrast_meets_double_a_in_both_themes`
+   holds it.
+20. **The viewer reaches bytes through a hard link, not a custom scheme.**
+   A `dig://` scheme was built first and abandoned: QtWebEngine will not let a
+   `file://` page fetch or even `<img>` one, and there is no way to attach the
+   CORS headers it would want. The bridge hands the page a `file://` path into
+   `blobs/.views/<sha><ext>` instead.
+21. **The sync server is `http.server`, not QtHttpServer.** QtHttpServer's
+   Python bindings cannot express this API: a route handler cannot return a
+   `QHttpServerResponse` (it is move-only in C++ and PySide refuses to copy it),
+   and `QAbstractHttpServer`'s virtuals are not exposed to subclass. A threaded
+   `http.server` on its own thread, with a SQLite connection per thread, does
+   the job with fewer moving parts.
+22. **`segno` is pinned for the pairing QR code.** Pure Python, no dependencies
+   of its own, and it only ever draws a code that is shown on this screen.
+23. **The web view is hard-wired to this computer.** A URL request interceptor
    refuses every scheme except file, qrc, data, blob, and about, so "no network
    calls" is enforced rather than merely intended. Navigation away from the one
    local document is refused and handed to `openUrl` instead. The context menu is
@@ -307,23 +332,16 @@ public until one of those is done.
 
 ## Where to pick up
 
-In this order. Everything before this is done, tested, committed, and pushed.
+1. **Phase 6 again.** Re-run `scripts/fidelity.py` against the prototype for the
+   screens the prototype covers. Its case list needs updating for the new ones,
+   and the light palette now deliberately differs (see decision 20), so the
+   comparison needs a note or a token override. Then a design consistency pass
+   over the group page, the review, the viewer, onboarding, and the sync panel.
+2. **Phase 8**, the scripted user pass, extended as the addendum lists.
+3. **Phase 9**: screenshots with example data only, the release, the AppImage,
+   publishing, and replacing the local install.
 
-1. **Part 7, the feature set.** Group pages (7.1), Your review with periods
-   (7.2), the log on projects and groups (7.3), duplicate and templates (7.4),
-   a Recently deleted screen over the tombstones the store already keeps (7.5),
-   the `dig` command and single instance (7.6), quiet projects (7.7), the People
-   screen (7.8), backup and restore (7.9), CSV import (7.10), text size and the
-   accessibility pass (7.11), Not planned (7.12). The store already carries
-   `log_entries`, `templates`, group descriptions, group links, group files and
-   group decisions, so most of 7.1 and 7.3 is interface work only.
-2. **Part 5B, sync.** The local server bound to Tailscale and loopback only,
-   pairing, the `/v1` API, the conflict policy, the conformance client under
-   `tools/sync-client`, and `docs/SYNC.md`.
-3. **Phase 6 again.** Re-run `scripts/fidelity.py`, which needs its case list
-   updated for the new screens, and do the design consistency pass over
-   everything the prototype does not cover.
-4. **Phase 8**, then **Phase 9**.
+**Before Phase 9 publishing**, settle the GitHub residue described above.
 
 Run the suite with `./.venv/bin/python -m pytest tests/ -q`. Compare against the
 prototype with `scripts/fidelity.py`. Drive the real app with `scripts/drive.py`.
@@ -347,23 +365,16 @@ logged here rather than fixed quietly out of phase.
 
 ## Where to pick up
 
-In this order. Everything before this is done, tested, committed, and pushed.
+1. **Phase 6 again.** Re-run `scripts/fidelity.py` against the prototype for the
+   screens the prototype covers. Its case list needs updating for the new ones,
+   and the light palette now deliberately differs (see decision 20), so the
+   comparison needs a note or a token override. Then a design consistency pass
+   over the group page, the review, the viewer, onboarding, and the sync panel.
+2. **Phase 8**, the scripted user pass, extended as the addendum lists.
+3. **Phase 9**: screenshots with example data only, the release, the AppImage,
+   publishing, and replacing the local install.
 
-1. **Part 7, the feature set.** Group pages (7.1), Your review with periods
-   (7.2), the log on projects and groups (7.3), duplicate and templates (7.4),
-   a Recently deleted screen over the tombstones the store already keeps (7.5),
-   the `dig` command and single instance (7.6), quiet projects (7.7), the People
-   screen (7.8), backup and restore (7.9), CSV import (7.10), text size and the
-   accessibility pass (7.11), Not planned (7.12). The store already carries
-   `log_entries`, `templates`, group descriptions, group links, group files and
-   group decisions, so most of 7.1 and 7.3 is interface work only.
-2. **Part 5B, sync.** The local server bound to Tailscale and loopback only,
-   pairing, the `/v1` API, the conflict policy, the conformance client under
-   `tools/sync-client`, and `docs/SYNC.md`.
-3. **Phase 6 again.** Re-run `scripts/fidelity.py`, which needs its case list
-   updated for the new screens, and do the design consistency pass over
-   everything the prototype does not cover.
-4. **Phase 8**, then **Phase 9**.
+**Before Phase 9 publishing**, settle the GitHub residue described above.
 
 Run the suite with `./.venv/bin/python -m pytest tests/ -q`. Compare against the
 prototype with `scripts/fidelity.py`. Drive the real app with `scripts/drive.py`.

@@ -364,15 +364,41 @@ class Store:
         out.sort(key=lambda r: r.get("deleted_at") or "", reverse=True)
         return out
 
+    # What belongs to a project or a group, and follows it back out of the bin.
+    CHILDREN = {
+        "projects": (
+            ("checklist_items", "project_id"), ("decisions", "project_id"),
+            ("releases", "project_id"), ("people", "project_id"),
+            ("links", "project_id"), ("stage_history", "project_id"),
+            ("wait_history", "project_id"), ("log_entries", "project_id"),
+            ("files", "project_id"),
+        ),
+        "groups": (
+            ("links", "group_id"), ("decisions", "group_id"),
+            ("log_entries", "group_id"), ("files", "group_id"),
+        ),
+    }
+
     def restore(self, collection: str, record_id: str) -> bool:
+        """Bring a record back, and everything that belonged to it.
+
+        A project that went in the bin took its checklist, its decisions, its
+        files and its log with it, so it comes back with them.
+        """
         conn = self.connect()
         row = conn.execute(
             f"SELECT rev FROM {collection} WHERE id = ? AND deleted = 1", (record_id,)
         ).fetchone()
         if row is None:
             return False
+        at = now_iso()
         with conn:
-            self.write(conn, collection, record_id, "update", {}, self.device_id, now_iso())
+            self.write(conn, collection, record_id, "update", {}, self.device_id, at)
+            for child, column in self.CHILDREN.get(collection, ()):
+                for kid in conn.execute(
+                    f"SELECT id FROM {child} WHERE {column} = ? AND deleted = 1", (record_id,)
+                ).fetchall():
+                    self.write(conn, child, kid["id"], "update", {}, self.device_id, at)
         return True
 
     # ------------------------------------------------------------ the history

@@ -451,3 +451,22 @@ def test_every_collection_has_the_sync_columns(store: Store) -> None:
     for name in records.COLLECTIONS:
         columns = {row[1] for row in conn.execute(f"PRAGMA table_info({name})")}
         assert {"id", "created_at", "updated_at", "updated_by", "rev", "deleted", "deleted_at"} <= columns, name
+
+
+def test_restoring_a_project_brings_its_children_back(store: Store) -> None:
+    store.save_state(SAMPLE)
+    state = store.load().state
+    state["projects"] = [p for p in state["projects"] if p["id"] != "p1"]
+    store.save_state(state)
+
+    assert store.load().state["projects"][0]["id"] == "p2"
+    conn = store.connect()
+    assert conn.execute("SELECT deleted FROM checklist_items WHERE id='i1'").fetchone()["deleted"] == 1
+
+    assert store.restore("projects", "p1") is True
+    back = next(p for p in store.load().state["projects"] if p["id"] == "p1")
+    assert [i["text"] for i in back["items"]] == ["Intake complete", "Old gallery 404s"]
+    assert [d["text"] for d in back["decisions"]] == ["Keep the structure."]
+    assert back["people"][0]["n"] == "Client"
+    assert back["links"] == ["example.com"]
+    assert back["hist"][0]["stage"] == "Planned"

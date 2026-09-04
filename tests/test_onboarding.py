@@ -24,7 +24,9 @@ def test_a_fresh_machine_opens_on_the_first_step(ui) -> None:
     assert ui.count(".ob .dots i.on") == 1
     body = ui.html()
     assert "Dig keeps every project you're working on in one place." in body
-    assert "no accounts" in body and "never touches the internet" in body
+    assert "no outbound internet requests of any kind" in body
+    assert "no accounts and no cloud" in body
+    assert "Sync is off by default" in body
 
 
 def test_it_only_appears_once(ui) -> None:

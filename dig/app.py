@@ -35,6 +35,11 @@ def main(argv: list[str] | None = None) -> int:
     if "--version" in argv:
         print(f"{__app_name__} {__version__}")
         return 0
+    if any(a in ("--help", "-h") for a in argv[1:]):
+        from dig.single import USAGE
+
+        print(USAGE)
+        return 0
 
     _configure_engine()
 
@@ -54,6 +59,16 @@ def main(argv: list[str] | None = None) -> int:
     # KDE Plasma on Wayland uses this to group the window with its launcher.
     QGuiApplication.setDesktopFileName("dig")
 
+    from dig.single import Listener, parse_args, send_to_running
+
+    command = parse_args(argv)
+
+    # One Dig at a time. A second launch hands over what it was asked to do.
+    if send_to_running({"argv": argv, "command": command}):
+        if command:
+            print(f"{__app_name__}: handed to the copy already running.")
+        return 0
+
     app = QApplication(argv)
 
     icon_path = paths.project_root() / "assets" / "icons" / "dig-256.png"
@@ -70,9 +85,17 @@ def main(argv: list[str] | None = None) -> int:
     bridge.attach_window(window)
     bridge.prime(result)
 
+    listener = Listener(window)
+    listener.arrived.connect(lambda payload: window.handle_command(payload))
+
     saved_ui = (result.state or {}).get("ui") or {}
     window.apply_geometry(saved_ui.get("window"))
     window.load_ui()
     window.show()
+    if command:
+        window.queue_command(command)
 
-    return app.exec()
+    try:
+        return app.exec()
+    finally:
+        listener.close()

@@ -17,7 +17,8 @@ import uuid
 # One fixed namespace, so a derived id is the same on every device forever.
 NAMESPACE = uuid.UUID("6f6b8f2a-0d1b-4a5e-9a4e-2f3c5d6e7a8b")
 
-SETTING_KEYS = ("org", "you", "theme", "setupDone", "ui", "startHere")
+SETTING_KEYS = ("org", "you", "theme", "setupDone", "ui", "startHere",
+                "backupFolder", "backupEvery")
 
 
 def derived_id(*parts) -> str:

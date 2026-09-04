@@ -46,7 +46,9 @@ function blank(){return{org:'',you:'',theme:'system',setupDone:false,
   view:'setup',projectId:null,ptab:'work',filterGroup:'all',sort:'activity',
   ideaSort:'oldest',libFilter:'all',publicOnly:true,resurfId:null,
   capType:'auto',capProject:'',toasts:[],uiWindow:null,
-  obStep:1,obExamples:false,startHere:null,
+  obStep:1,obExamples:false,startHere:null,groupId:null,
+  period:'week',periodFrom:'',periodTo:'',reviewGroup:'all',textSize:'m',
+  backupFolder:'',backupEvery:'',syncPort:8787,
   setupWork:{apps:false,clients:false,content:false,personal:false,programs:false}}}
 
 /* Dates travel as ISO strings and come back as Dates, at the exact places the
@@ -86,10 +88,11 @@ function adopt(saved){
   var s=blank();
   if(!saved)return s;
   ['org','you','theme','setupDone','groups','types','projects','ideas','inbox','library','activity',
-   'libraryFiles','templates','startHere']
+   'libraryFiles','templates','startHere','backupFolder','backupEvery']
     .forEach(function(k){if(saved[k]!==undefined&&saved[k]!==null)s[k]=saved[k]});
   var ui=saved.ui||{};
-  ['filterGroup','sort','ideaSort','libFilter','publicOnly','ptab','resurfId']
+  ['filterGroup','sort','ideaSort','libFilter','publicOnly','ptab','resurfId',
+   'period','periodFrom','periodTo','reviewGroup','textSize','syncPort']
     .forEach(function(k){if(ui[k]!==undefined&&ui[k]!==null)s[k]=ui[k]});
   s.uiWindow=ui.window||null;
   s.view=s.setupDone?'home':'setup';
@@ -101,8 +104,11 @@ function persist(){return{org:S.org,you:S.you,theme:S.theme,setupDone:S.setupDon
   groups:S.groups,types:S.types,projects:S.projects,ideas:S.ideas,inbox:S.inbox,
   library:S.library,activity:S.activity,libraryFiles:S.libraryFiles||[],
   templates:S.templates||[],startHere:S.startHere,
+  backupFolder:S.backupFolder||'',backupEvery:S.backupEvery||'',
   ui:{filterGroup:S.filterGroup,sort:S.sort,ideaSort:S.ideaSort,libFilter:S.libFilter,
-      publicOnly:S.publicOnly,ptab:S.ptab,resurfId:S.resurfId,window:S.uiWindow}}}
+      publicOnly:S.publicOnly,ptab:S.ptab,resurfId:S.resurfId,window:S.uiWindow,
+      period:S.period,periodFrom:S.periodFrom,periodTo:S.periodTo,
+      reviewGroup:S.reviewGroup,textSize:S.textSize,syncPort:S.syncPort}}}
 
 var saveTimer=null;
 function scheduleSave(){if(!READY||!BRIDGE)return;if(saveTimer)clearTimeout(saveTimer);saveTimer=setTimeout(flushSave,150)}
@@ -150,6 +156,7 @@ function start(){
     BRIDGE.motionChanged.connect(setMotion);
     wireDropping();
     BRIDGE.saveFailed.connect(function(msg){stickyToast('save',msg?esc(msg):'')});
+    BRIDGE.syncedFromElsewhere.connect(function(){reloadFromDisk()});
     BRIDGE.pdfDone.connect(function(json){
       var r=JSON.parse(json);
       if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast('The PDF did not save. '+esc(r.reason));return}
@@ -164,7 +171,9 @@ function start(){
       S=adopt(opening.state);
       pickResurf();
       READY=true;
+      applyTextSize();
       render();
+      setTimeout(runScheduledBackup,1500);
       if(opening.notice)toast(esc(opening.notice));
     });
   });
@@ -185,7 +194,10 @@ function stageName(p){return T(p.type).stages[p.stage]}
 function nextStage(p){return T(p.type).stages[p.stage+1]||null}
 function isLast(p){return p.stage>=T(p.type).stages.length-1}
 function unmet(p){var t=T(p.type),st=stageName(p),ex=t.check[st]||[];return ex.filter(function(e){var it=p.items.find(function(x){return x.text===e});return !(it&&it.done)})}
-function nextDecNo(){var m=0;S.projects.forEach(function(p){p.decisions.forEach(function(x){if(x.no>m)m=x.no})});return m+1}
+function nextDecNo(){var m=0;
+  S.projects.forEach(function(p){p.decisions.forEach(function(x){if(x.no>m)m=x.no})});
+  S.groups.forEach(function(g){(g.decisions||[]).forEach(function(x){if(x.no>m)m=x.no})});
+  return m+1}
 function dno(n){return 'D-'+String(n).padStart(4,'0')}
 /* A toast that stays until whatever it is about stops being true. Passing no
    message takes it down again. Used when Dig cannot write to the disk, which
@@ -215,19 +227,21 @@ function render(){
   app.className='app';
   app.innerHTML=renderSide()+'<main class="main" id="main">'+renderView(S.view)+'</main>'+renderOverlays()+'<div class="drop-veil" id="drop-veil"><div class="card"><b>Drop to keep a copy</b><span>Dig keeps its own copy. Your file is not moved.</span></div></div><div class="toasts" id="toasts"></div>';
   renderToasts();
+  wireA11y();
+  applyTextSize();
   scheduleSave();
 }
 function renderToasts(){var t=document.getElementById('toasts');if(!t)return;t.innerHTML=S.toasts.map(function(x){return '<div class="toast">'+x.msg+(x.undo?' <span class="u" onclick="'+x.undo+'">Undo</span>':'')+'</div>'}).join('')}
 function ico(n){return{home:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 7.5L8 3l5.5 4.5V13a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1z"/></svg>',projects:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1.2"/><rect x="9" y="2" width="5" height="5" rx="1.2"/><rect x="2" y="9" width="5" height="5" rx="1.2"/><rect x="9" y="9" width="5" height="5" rx="1.2"/></svg>',roadmap:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 12l4-3 3 2 5-5"/><path d="M11 6h3v3"/></svg>',ideas:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-2.5 7.1c.4.4.5.9.5 1.4V11h4v-.5c0-.5.1-1 .5-1.4A4 4 0 0 0 8 2zM6.5 13.5h3"/></svg>',library:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3h4l1 1.5h5V13H3z"/></svg>',week:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 13V8M8 13V3M13 13V6"/></svg>'}[n]}
 function renderSide(){
-  var nav=[['home','Home','1'],['projects','Projects','2'],['roadmap','Roadmap','3'],['ideas','Ideas','4'],['library','Library','5'],['week','Your week','6']];
+  var nav=[['home','Home','1'],['projects','Projects','2'],['roadmap','Roadmap','3'],['ideas','Ideas','4'],['library','Library','5'],['week','Your review','6']];
   return '<aside class="side"><div class="who"><div class="av"></div><div><div class="n">'+esc(S.org)+'</div><div class="s">Dig · stays on this computer</div></div></div>'+
   '<button class="add-btn" onclick="openCap()"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v10M3 8h10"/></svg>Add something <kbd>Ctrl K</kbd></button>'+
   '<nav class="nav">'+nav.map(function(n){var on=S.view===n[0]||(n[0]==='projects'&&S.view==='project');var right=n[0]==='home'&&S.inbox.length?'<span class="cnt">'+S.inbox.length+'</span>':'<kbd class="k">'+n[2]+'</kbd>';return '<a class="'+(on?'on':'')+'" onclick="go(\''+n[0]+'\')">'+ico(n[0])+n[1]+right+'</a>'}).join('')+'</nav>'+
-  '<div class="sec-h">Groups <a onclick="go(\'settings\')">edit</a></div><div class="groups"><a class="'+(S.filterGroup==='all'?'on':'')+'" onclick="setGroup(\'all\')"><i style="background:var(--ink-3)"></i>Everything<span class="c">'+S.projects.length+'</span></a>'+S.groups.map(function(g){var n=S.projects.filter(function(p){return p.group===g.id}).length;return '<a class="'+(S.filterGroup===g.id?'on':'')+'" onclick="setGroup(\''+g.id+'\')"><i style="background:'+g.color+'"></i>'+esc(g.name)+(g.priv?'<span class="lk">private</span>':'')+'<span class="c">'+n+'</span></a>'}).join('')+'</div>'+
-  '<div class="side-foot"><a onclick="go(\'settings\')">Settings</a><a onclick="openKeys()">Shortcuts <kbd>?</kbd></a><div class="theme">'+['light','dark','system'].map(function(m){return '<button class="'+(S.theme===m?'on':'')+'" onclick="setTheme(\''+m+'\')">'+(m==='system'?'Auto':m[0].toUpperCase()+m.slice(1))+'</button>'}).join('')+'</div></div></aside>';
+  '<div class="sec-h">Groups <a onclick="go(\'settings\')">edit</a></div><div class="groups"><a class="'+(S.filterGroup==='all'?'on':'')+'" onclick="setGroup(\'all\')"><i style="background:var(--ink-3)"></i>Everything<span class="c">'+S.projects.length+'</span></a>'+S.groups.map(function(g){var n=S.projects.filter(function(p){return p.group===g.id}).length;return '<a class="'+((S.view==='group'&&S.groupId===g.id)||(S.view!=='group'&&S.filterGroup===g.id)?'on':'')+'" onclick="openG(\''+g.id+'\')"><i style="background:'+g.color+'"></i>'+esc(g.name)+(g.priv?'<span class="lk">private</span>':'')+'<span class="c">'+n+'</span></a>'}).join('')+'</div>'+
+  syncStatusLine()+'<div class="side-foot"><a onclick="go(\'settings\')">Settings</a><a onclick="openKeys()">Shortcuts <kbd>?</kbd></a><div class="theme">'+['light','dark','system'].map(function(m){return '<button class="'+(S.theme===m?'on':'')+'" onclick="setTheme(\''+m+'\')">'+(m==='system'?'Auto':m[0].toUpperCase()+m.slice(1))+'</button>'}).join('')+'</div></div></aside>';
 }
-function renderView(v){switch(v){case 'home':return renderHome();case 'projects':return renderProjects();case 'project':return renderProject();case 'roadmap':return renderRoadmap();case 'week':return renderWeek();case 'ideas':return renderIdeas();case 'library':return renderLibrary();case 'settings':return renderSettings();case 'setup':return renderSetup()}return ''}
+function renderView(v){switch(v){case 'home':return renderHome();case 'projects':return renderProjects();case 'project':return renderProject();case 'roadmap':return renderRoadmap();case 'week':return renderWeek();case 'ideas':return renderIdeas();case 'library':return renderLibrary();case 'settings':return renderSettings();case 'group':return renderGroup();case 'people':return renderPeople();case 'notplanned':return renderNotPlanned();case 'setup':return renderSetup()}return ''}
 
 /* ---- HOME ---- */
 function renderHome(){
@@ -238,6 +252,7 @@ function renderHome(){
   var row=function(p){var g=G(p.group);return '<div class="row click" id="row-'+p.id+'" onclick="openP(\''+p.id+'\')"><span class="dotc" style="background:'+g.color+'"></span><div class="grow"><div class="t">'+esc(p.next)+'</div><div class="m"><b>'+esc(p.name)+'</b> · '+esc(stageName(p))+(days(p.enteredAt)?' for '+days(p.enteredAt)+' days':'')+'</div></div><div class="acts"><button class="btn sm" onclick="event.stopPropagation();doneNext(\''+p.id+'\')">Done ✓</button><button class="btn sm ghost" onclick="event.stopPropagation();openP(\''+p.id+'\')">Open</button></div></div>'};
   return '<div class="view">'+startHereCard()+'<div class="hd"><div><h1>'+greetingLine()+'</h1><div class="sub"><b>'+active.length+'</b> projects active · <b>'+waiting.length+'</b> waiting on someone else · <b>'+S.inbox.length+'</b> in your inbox</div></div><div class="r"><div class="search" onclick="openPal()">Find anything <kbd>/</kbd></div></div></div>'+
   '<div class="sec"><div class="sec-t"><h2>'+secIcon('next')+'Up next</h2><span class="help">the next step on each project that\'s been sitting longest</span><a class="rt" onclick="go(\'projects\')">All projects →</a></div><div class="box">'+(upNext.length?upNext.map(row).join(''):'<div class="empty"><div class="gl" style="background:var(--blue-soft);color:var(--blue)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8h9M8.5 4.5L12 8l-3.5 3.5"/></svg></div><b>Nothing lined up</b>Open a project and write its next step.</div>')+'</div></div>'+
+  (quietOnes().length?'<div class="quietline" onclick="S.sort=\'quiet\';go(\'projects\')">'+quietOnes().length+(quietOnes().length===1?' project has':' projects have')+' gone quiet. Nothing has happened on '+(quietOnes().length===1?'it':'them')+' for three weeks.</div>':'')+
   '<div class="sec"><div class="sec-t"><h2>'+secIcon('wait')+'Waiting on someone else</h2><span class="help">days counted, nobody nagged</span></div><div class="box">'+(waiting.length?waiting.map(function(p){return '<div class="row click" id="wrow-'+p.id+'" onclick="openP(\''+p.id+'\')"><span class="waitdot"></span><div class="grow"><div class="t">'+esc(p.wait.what)+'</div><div class="m"><b>'+esc(p.name)+'</b></div></div><span class="badge w">'+days(p.wait.since)+' days</span><button class="btn sm ghost" onclick="event.stopPropagation();resolveWait(\''+p.id+'\')">It arrived</button></div>'}).join(''):'<div class="empty"><div class="gl" style="background:var(--amber-soft);color:var(--amber)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg></div><b>Nothing waiting</b>Everything is in your hands right now.</div>')+'</div></div>'+
   '<div class="sec"><div class="sec-t"><h2>'+secIcon('inbox')+'Inbox</h2><span class="help">things you added quickly, waiting to be put somewhere</span></div><div class="box">'+(S.inbox.length?S.inbox.map(function(u){var gp=u.guess&&Pr(u.guess);return '<div class="row" id="irow-'+u.id+'"><span class="badge '+(u.type==='bug'?'b':(u.type==='link'?'g':'i'))+'">'+u.type+'</span><div class="grow"><div class="t">'+esc(u.text)+'</div><div class="m">'+ago(u.at)+' ago'+(gp?' · looks like <b>'+esc(gp.name)+'</b>':'')+'</div></div><div class="acts">'+(gp?'<button class="btn sm" onclick="quickFile(\''+u.id+'\')">Put in '+esc(gp.name)+'</button>':'')+'<button class="btn sm ghost" onclick="openSort(\''+u.id+'\')">Choose…</button></div></div>'}).join(''):'<div class="empty"><div class="gl" style="background:var(--teal-soft);color:var(--teal)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 9h3l1 2h3l1-2h3V13h-11z"/><path d="M4 9V3.5h8V9"/></svg></div><b>Inbox is empty</b>Press Ctrl K to add something. It lands here if you don\'t say where it goes.</div>')+'</div></div>'+
   '<div class="sec"><div class="sec-t"><h2>'+secIcon('idea')+'An old idea worth a second look</h2><span class="help">picked at random from ideas you haven\'t touched</span></div><div class="box">'+(r?'<div class="row"><div class="grow"><div class="t">'+esc(r.text)+'</div><div class="m">'+esc(r.desc)+'</div><div class="m">Written '+ago(r.at)+' ago · '+(r.opened?'last opened '+ago(r.opened)+' ago':'never opened since')+'</div></div><div class="acts"><button class="btn sm p" onclick="startIdea(\''+r.id+'\')">Start it</button><button class="btn sm ghost" onclick="openIdea(\''+r.id+'\')">Open</button><button class="btn sm ghost" onclick="pickResurf();render()">Show another</button></div></div>':'<div class="empty"><b>Nothing to resurface yet</b>Once you have a few ideas, one will show up here each day.</div>')+'</div></div></div>';
@@ -249,12 +264,12 @@ function quickFile(uid_){var u=S.inbox.find(function(x){return x.id===uid_});var
 /* ---- PROJECTS ---- */
 function renderProjects(){
   var ps=S.projects.filter(function(p){return S.filterGroup==='all'||p.group===S.filterGroup});
-  if(S.sort==='waiting')ps=ps.filter(function(p){return p.wait});if(S.sort==='done')ps=ps.filter(function(p){return isLast(p)||p.quiet});if(S.sort==='parked')ps=ps.filter(function(p){return p.parked});if(S.sort==='activity')ps=ps.filter(function(p){return !p.parked});
+  if(S.sort==='waiting')ps=ps.filter(function(p){return p.wait});if(S.sort==='done')ps=ps.filter(function(p){return isLast(p)||p.quiet});if(S.sort==='parked')ps=ps.filter(function(p){return p.parked});if(S.sort==='quiet')ps=ps.filter(goneQuiet);if(S.sort==='activity')ps=ps.filter(function(p){return !p.parked});
   ps.sort(function(a,b){return b.lastAct-a.lastAct});
   var groups=S.groups.filter(function(g){return S.filterGroup==='all'||g.id===S.filterGroup});
   return '<div class="view wide"><div class="hd"><div><h1>Projects</h1><div class="sub">Everything you\'re working on, by group. Each one moves through stages.</div></div><div class="r"><div class="search" onclick="openPal()">Find a project <kbd>/</kbd></div><button class="btn" onclick="openShare(null)">Share as PDF</button><button class="btn p" onclick="openNew(\'\')">New project</button></div></div>'+
-  '<div class="chips"><span class="chip '+(S.filterGroup==='all'?'on':'')+'" onclick="setGroup(\'all\')">All groups</span>'+S.groups.map(function(g){return '<span class="chip '+(S.filterGroup===g.id?'on':'')+'" onclick="setGroup(\''+g.id+'\')"><i style="background:'+g.color+'"></i>'+esc(g.name)+'</span>'}).join('')+'<span class="sp"></span><select onchange="S.sort=this.value;render()"><option value="activity" '+(S.sort==='activity'?'selected':'')+'>Active</option><option value="waiting" '+(S.sort==='waiting'?'selected':'')+'>Only waiting</option><option value="done" '+(S.sort==='done'?'selected':'')+'>Only finished</option><option value="parked" '+(S.sort==='parked'?'selected':'')+'>Only parked</option></select></div>'+
-  groups.map(function(g){var list=ps.filter(function(p){return p.group===g.id});return '<div class="grp" style="--gc:'+g.color+'"><div class="grp-h"><span class="n"><span class="dotc" style="background:'+g.color+'"></span>'+esc(g.name)+'</span><span class="c">'+list.length+'</span>'+(g.priv?'<span class="lk">private · never shared</span>':'')+'<span class="add" onclick="S.filterGroup=\''+g.id+'\';go(\'roadmap\')">roadmap</span><span class="add" onclick="openNew(\''+g.id+'\')">+ project</span></div>'+(list.length?'<div class="cards">'+list.map(card).join('')+'</div>':'<div class="box empty"><b>No projects here</b>Add one, or start one from an idea.</div>')+'</div>'}).join('')+'</div>';
+  '<div class="chips"><span class="chip '+(S.filterGroup==='all'?'on':'')+'" onclick="setGroup(\'all\')">All groups</span>'+S.groups.map(function(g){return '<span class="chip '+(S.filterGroup===g.id?'on':'')+'" onclick="setGroup(\''+g.id+'\')"><i style="background:'+g.color+'"></i>'+esc(g.name)+'</span>'}).join('')+'<span class="sp"></span><select onchange="S.sort=this.value;render()"><option value="activity" '+(S.sort==='activity'?'selected':'')+'>Active</option><option value="waiting" '+(S.sort==='waiting'?'selected':'')+'>Only waiting</option><option value="done" '+(S.sort==='done'?'selected':'')+'>Only finished</option><option value="parked" '+(S.sort==='parked'?'selected':'')+'>Only parked</option><option value="quiet" '+(S.sort==='quiet'?'selected':'')+'>Only gone quiet</option></select></div>'+
+  groups.map(function(g){var list=ps.filter(function(p){return p.group===g.id});return '<div class="grp" style="--gc:'+g.color+'"><div class="grp-h"><span class="n" style="cursor:pointer" onclick="openG(\''+g.id+'\')"><span class="dotc" style="background:'+g.color+'"></span>'+esc(g.name)+'</span><span class="c">'+list.length+'</span>'+(g.priv?'<span class="lk">private · never shared</span>':'')+'<span class="add" onclick="S.filterGroup=\''+g.id+'\';go(\'roadmap\')">roadmap</span><span class="add" onclick="openNew(\''+g.id+'\')">+ project</span></div>'+(list.length?'<div class="cards">'+list.map(card).join('')+'</div>':'<div class="box empty"><b>No projects here</b>Add one, or start one from an idea.</div>')+'</div>'}).join('')+'</div>';
 }
 function card(p){var t=T(p.type),g=G(p.group),ns=nextStage(p);
   var line=p.wait?'<b>'+esc(stageName(p))+'</b><span class="badge w">Waiting '+days(p.wait.since)+'d</span>':(p.parked?'<span class="badge pk">Parked</span>':(p.quiet||isLast(p)?'<span class="badge s">Finished · '+esc(stageName(p))+'</span>':'<span><b>'+esc(stageName(p))+'</b> · stage '+(p.stage+1)+' of '+t.stages.length+'</span><span>'+(days(p.enteredAt)?days(p.enteredAt)+' days here':'today')+'</span>'));
@@ -285,9 +300,9 @@ function setWhen(id,w){var p=Pr(id);p.when=w;p.lastAct=NOW;render();toast('<b>'+
 /* ---- PROJECT PAGE ---- */
 function renderProject(){
   var p=Pr(S.projectId);if(!p)return renderProjects();var t=T(p.type),g=G(p.group),st=stageName(p),ex=t.check[st]||[],ns=nextStage(p);
-  var head='<div class="view" style="--gc:'+g.color+'"><div class="crumb"><a onclick="go(\'projects\')">Projects</a> / <a onclick="S.filterGroup=\''+g.id+'\';go(\'projects\')">'+esc(g.name)+'</a></div>'+
+  var head='<div class="view" style="--gc:'+g.color+'"><div class="crumb"><a onclick="go(\'projects\')">Projects</a> / <a onclick="openG(\''+g.id+'\')">'+esc(g.name)+'</a></div>'+
   '<div class="ph"><div class="sq">'+esc(ini(p.name))+'</div><div><h1>'+esc(p.name)+'</h1><div class="m">'+tbadge(p)+'<span class="badge g">'+(p.pub?'Can be shared':'Private')+'</span><span class="badge g">'+esc(hzLabel(p.when))+'</span>'+p.links.map(function(u){return '<a onclick="openLink('+jsq(u)+')">'+esc(u)+'</a>'}).join('')+'<a onclick="addLink(\''+p.id+'\')">+ link</a></div></div>'+
-  '<div class="r"><button class="btn" onclick="openShare(\''+p.id+'\')">Share</button><button class="btn ghost" onclick="togglePark(\''+p.id+'\')">'+(p.parked?'Unpark':'Park')+'</button>'+(p.wait?'<button class="btn" onclick="resolveWait(\''+p.id+'\')">It arrived</button>':'<button class="btn" onclick="openWait(\''+p.id+'\')">Waiting on…</button>')+(ns?'<button class="btn p" onclick="openAdvance(\''+p.id+'\')">Move to '+esc(ns)+' →</button>':'<button class="btn" disabled>Finished</button>')+'</div></div>'+
+  '<div class="r"><button class="btn" onclick="openProjectMore(\''+p.id+'\')">More</button><button class="btn" onclick="openShare(\''+p.id+'\')">Share</button><button class="btn ghost" onclick="togglePark(\''+p.id+'\')">'+(p.parked?'Unpark':'Park')+'</button>'+(p.wait?'<button class="btn" onclick="resolveWait(\''+p.id+'\')">It arrived</button>':'<button class="btn" onclick="openWait(\''+p.id+'\')">Waiting on…</button>')+(ns?'<button class="btn p" onclick="openAdvance(\''+p.id+'\')">Move to '+esc(ns)+' →</button>':'<button class="btn" disabled>Finished</button>')+'</div></div>'+
   (p.wait?'<div class="box waitbar"><span class="waitdot"></span><span>Waiting on <b>'+esc(p.wait.what)+'</b> for '+days(p.wait.since)+' days</span><span style="margin-left:auto"><button class="btn sm" onclick="resolveWait(\''+p.id+'\')">It arrived</button></span></div>':'')+
   '<div class="stages">'+t.stages.map(function(s,i){return '<div class="st '+(i<p.stage?'done':(i===p.stage?'cur':''))+'" onclick="jumpStage(\''+p.id+'\','+i+')"><b>'+esc(s)+'</b><small>'+(i===p.stage?'you are here · '+days(p.enteredAt)+' days':(i<p.stage?'done':'later'))+'</small></div>'}).join('')+'</div>'+
   '<div class="tabs"><button class="'+(S.ptab==='work'?'on':'')+'" onclick="S.ptab=\'work\';render()">Work</button><button class="'+(S.ptab==='rm'?'on':'')+'" onclick="S.ptab=\'rm\';render()">Roadmap</button><button class="'+(S.ptab==='rec'?'on':'')+'" onclick="S.ptab=\'rec\';render()">Record</button></div>';
@@ -306,13 +321,19 @@ function renderProject(){
   '<div><div class="sec-t"><h2>'+secIcon('rel')+'Releases</h2><a class="rt" onclick="addRelease(\''+p.id+'\')">+ add</a></div><div class="box">'+(p.releases.length?p.releases.slice().reverse().map(function(r){return '<div class="rel"><span class="v">'+esc(r.v)+'</span><span>'+esc(r.note)+'</span><span class="m">'+fmt(r.at)+'</span></div>'}).join(''):'<div class="empty" style="padding:14px">Nothing released yet.</div>')+'</div></div>'+
   '</aside></div>';
 }
+function stageLogs(p,stage){
+  var mine=logsOf(p).filter(function(e){return (e.stage||'')===stage});
+  if(!mine.length)return '';
+  return mine.map(function(e){
+    return '<div class="lg"><b>'+esc(fmt(new Date(e.at)))+'</b>'+esc(e.text)+'</div>'}).join('');
+}
 function renderProjectRoadmap(p){
   var t=T(p.type),g=G(p.group);
   var hist=function(s){return p.hist.find(function(h){return h.stage===s})};
   var rows=t.stages.map(function(s,i){var h=hist(s);var cls=i<p.stage?'done':(i===p.stage?'cur':'future');
     var body='';
-    if(i<p.stage){body='<div class="bd">'+(h?fmt(h.from)+' → '+fmt(h.to)+' · '+Math.max(1,Math.round((h.to-h.from)/DAY))+' days':'')+p.releases.filter(function(r){return h&&r.at>=h.from&&r.at<=new Date(h.to.getTime()+DAY)}).map(function(r){return '<div><span class="rel">'+esc(r.v)+' · '+esc(r.note)+'</span></div>'}).join('')+'</div>'}
-    else if(i===p.stage){var open=p.items.filter(function(x){return !x.done}),done=p.items.filter(function(x){return x.done});body='<div class="bd">since '+fmt(p.enteredAt)+' · '+days(p.enteredAt)+' days'+(p.next?'<div style="margin-top:6px"><b style="color:var(--ink)">Next:</b> '+esc(p.next)+'</div>':'')+'<div style="margin-top:6px">'+open.map(function(x){return '<div class="it"><span class="ck"></span>'+esc(x.text)+'</div>'}).join('')+done.map(function(x){return '<div class="it ok"><span class="ck"></span>'+esc(x.text)+'</div>'}).join('')+'</div></div>'}
+    if(i<p.stage){body='<div class="bd">'+(h?fmt(h.from)+' → '+fmt(h.to)+' · '+Math.max(1,Math.round((h.to-h.from)/DAY))+' days':'')+p.releases.filter(function(r){return h&&r.at>=h.from&&r.at<=new Date(h.to.getTime()+DAY)}).map(function(r){return '<div><span class="rel">'+esc(r.v)+' · '+esc(r.note)+'</span></div>'}).join('')+stageLogs(p,s)+'</div>'}
+    else if(i===p.stage){var open=p.items.filter(function(x){return !x.done}),done=p.items.filter(function(x){return x.done});body='<div class="bd">since '+fmt(p.enteredAt)+' · '+days(p.enteredAt)+' days'+(p.next?'<div style="margin-top:6px"><b style="color:var(--ink)">Next:</b> '+esc(p.next)+'</div>':'')+'<div style="margin-top:6px">'+open.map(function(x){return '<div class="it"><span class="ck"></span>'+esc(x.text)+'</div>'}).join('')+done.map(function(x){return '<div class="it ok"><span class="ck"></span>'+esc(x.text)+'</div>'}).join('')+'</div>'+stageLogs(p,s)+'</div>'}
     else{var ex=t.check[s]||[];body='<div class="bd" style="color:var(--ink-3)">'+(ex.length?'Will need: '+ex.map(esc).join(' · '):'Nothing preset. Add expectations in Settings.')+'</div>'}
     return '<div class="tl-s '+cls+'"><div class="nd">'+(i<p.stage?'✓':(i+1))+'</div><div><div class="h"><b>'+esc(s)+'</b><span>'+(i<p.stage?'done':(i===p.stage?'you are here':'later'))+'</span></div>'+body+'</div></div>'});
   return '<div class="two" style="--gc:'+g.color+'"><div><div class="sec-t" style="margin-top:4px"><h2>'+secIcon('rm')+'Where this project has been, and where it\'s going</h2></div><div class="box" style="padding:18px 18px 4px"><div class="tl">'+rows.join('')+'</div></div></div>'+
@@ -322,24 +343,766 @@ function renderProjectRoadmap(p){
 function renderProjectRecord(p){
   var g=G(p.group);var acts=S.activity.filter(function(a){return a.pid===p.id});
   return '<div class="two" style="--gc:'+g.color+'"><div><div class="sec-t" style="margin-top:4px"><h2>'+secIcon('dec')+'Decisions</h2><span class="help">numbered, dated, permanent</span><a class="rt" onclick="openDec(\''+p.id+'\')">+ record one</a></div><div class="box">'+(p.decisions.length?p.decisions.slice().sort(function(a,b){return b.no-a.no}).map(function(x){return '<div class="dec '+(x.superseded?'sup':'')+'"><b>'+dno(x.no)+'</b><span>'+esc(x.text)+(x.supersedes?' <i style="color:var(--ink-3)">replaces '+dno(x.supersedes)+'</i>':'')+'</span><span class="sd">'+fmt(x.at)+'</span></div>'}).join(''):'<div class="empty"><b>No decisions yet</b>Record one and it gets a number you can refer back to.</div>')+'</div>'+
+  '<div class="sec-t" style="margin-top:22px"><h2>Log</h2><span class="help">what happened, in order</span></div>'+renderLogBox('project',p.id,p)+
   '<div class="sec-t" style="margin-top:22px"><h2>Past waits</h2></div><div class="box">'+(p.waitHist.length?p.waitHist.map(function(w){return '<div class="row"><div class="grow"><div class="t">'+esc(w.what)+'</div><div class="m">took '+w.days+' days</div></div></div>'}).join(''):'<div class="empty">Nothing recorded yet.</div>')+'</div></div>'+
   '<aside class="rail"><div><div class="sec-t"><h2>History</h2></div><div class="box">'+(acts.length?acts.map(function(a){return '<div class="row"><span class="dotc" style="background:'+g.color+'"></span><div class="grow"><div class="t" style="font-weight:400">'+esc(a.text)+'</div><div class="m">'+ago(a.at)+' ago</div></div></div>'}).join(''):'<div class="empty">Nothing yet.</div>')+'</div></div></aside></div>';
 }
 
+/* ======================= THE LOG (7.3) =======================
+   Dated notes on a project or a group. Separate from Notes, which is the one
+   standing description; these are what happened, in order. */
+
+function logsOf(owner){return (owner&&owner.logs)||[]}
+function addLog(kind,id,text,stage){
+  text=(text||'').trim();if(!text)return null;
+  var owner=kind==='project'?Pr(id):G(id);
+  if(!owner)return null;
+  owner.logs=owner.logs||[];
+  var entry={id:uid(),text:text,at:NOW,stage:stage||(kind==='project'?stageName(owner):''),highlight:false};
+  owner.logs.unshift(entry);
+  if(kind==='project')owner.lastAct=NOW;
+  return entry;
+}
+function logFromInput(kind,id,el){
+  var entry=addLog(kind,id,el.value);
+  if(!entry)return;
+  el.value='';render();
+  setTimeout(function(){var t=document.querySelector('.logadd textarea');if(t)t.focus()},0);
+}
+function toggleHighlight(kind,id,lid){
+  var owner=kind==='project'?Pr(id):G(id);if(!owner)return;
+  var e=(owner.logs||[]).find(function(x){return x.id===lid});
+  if(e){e.highlight=!e.highlight;render()}
+}
+function delLog(kind,id,lid){
+  var owner=kind==='project'?Pr(id):G(id);if(!owner)return;
+  var e=(owner.logs||[]).find(function(x){return x.id===lid});
+  owner.logs=(owner.logs||[]).filter(function(x){return x.id!==lid});
+  render();toast('Taken out',"undoLog('"+kind+"','"+id+"',"+jsq(JSON.stringify(e))+")");
+}
+function undoLog(kind,id,json){
+  var owner=kind==='project'?Pr(id):G(id);if(!owner)return;
+  try{var e=JSON.parse(json)}catch(err){return}
+  e.at=new Date(e.at);
+  owner.logs=owner.logs||[];owner.logs.unshift(e);
+  owner.logs.sort(function(a,b){return new Date(b.at)-new Date(a.at)});
+  render();toast('Put back');
+}
+function renderLogBox(kind,id,owner){
+  var logs=logsOf(owner);
+  return '<div class="box">'+
+    '<div class="logadd"><span class="when" style="padding-top:3px">today</span>'+
+    '<textarea rows="1" placeholder="What happened? Enter saves, Shift and Enter for a new line" '+
+    'oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\'" '+
+    'onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();logFromInput(\''+kind+'\',\''+id+'\',this)}"></textarea>'+
+    '<kbd>↵</kbd></div>'+
+    (logs.length?logs.map(function(e){
+      return '<div class="logline"><span class="when">'+esc(fmt(new Date(e.at)))+'</span>'+
+        '<span class="grow">'+esc(e.text)+'</span>'+
+        '<span class="hl'+(e.highlight?' on':'')+'" title="Mark as a highlight" onclick="toggleHighlight(\''+kind+'\',\''+id+'\',\''+e.id+'\')">★</span>'+
+        '<span class="x" onclick="delLog(\''+kind+'\',\''+id+'\',\''+e.id+'\')">✕</span></div>'}).join('')
+      :'<div class="empty" style="padding:16px">Nothing written down yet. A line a day is plenty.</div>')+
+  '</div>';
+}
+
+/* ======================= GONE QUIET (7.7) =======================
+   Not a state anyone sets. A project nobody has touched for three weeks. */
+var QUIET_DAYS=21;
+function goneQuiet(p){
+  return !p.wait&&!p.quiet&&!p.parked&&!isLast(p)&&days(p.lastAct)>=QUIET_DAYS;
+}
+function quietOnes(){return S.projects.filter(goneQuiet)}
+
+/* ======================= GROUP PAGES (7.1) ======================= */
+
+function openG(id){S.groupId=id;S.view='group';render()}
+function renderGroup(){
+  var g=S.groups.find(function(x){return x.id===S.groupId});
+  if(!g)return renderProjects();
+  var mine=S.projects.filter(function(p){return p.group===g.id});
+  var live=mine.filter(function(p){return !p.parked});
+  var byStage={};
+  live.forEach(function(p){var s=stageName(p);byStage[s]=(byStage[s]||0)+1});
+  var acts=S.activity.filter(function(a){return a.group===g.id}).slice(0,8);
+
+  return '<div class="view wide" style="--gc:'+g.color+'">'+
+  '<div class="crumb"><a onclick="go(\'projects\')">Projects</a> / '+esc(g.name)+'</div>'+
+  '<div class="gh"><div class="sq"></div><div><h1>'+esc(g.name)+'</h1>'+
+    '<div class="m"><span class="badge g">'+(g.priv?'Private':'Can be shared')+'</span>'+
+    '<span>'+mine.length+(mine.length===1?' project':' projects')+'</span>'+
+    (g.links||[]).map(function(u){return '<a onclick="openLink('+jsq(u)+')" style="color:var(--blue);cursor:pointer">'+esc(u)+'</a>'}).join('')+
+    '<a onclick="addGroupLink(\''+g.id+'\')" style="color:var(--blue);cursor:pointer">+ link</a></div></div>'+
+    '<div class="r"><button class="btn" onclick="openShare(\'g:'+g.id+'\')">Share</button>'+
+    '<button class="btn" onclick="editGroup(\''+g.id+'\')">Edit</button>'+
+    '<button class="btn p" onclick="openNew(\''+g.id+'\')">New project</button></div></div>'+
+
+  '<div class="sec" style="margin-top:18px"><div class="sec-t"><h2>What this group is</h2><span class="help">click to write · saves as you type</span></div>'+
+  '<div class="box"><div class="gdesc" contenteditable="true" oninput="G(\''+g.id+'\').description=this.innerText;scheduleSave()">'+
+    (esc(g.description||'')||'<span style="color:var(--ink-3)">What this group is for, and who it is for.</span>')+'</div></div></div>'+
+
+  '<div class="sec"><div class="sec-t"><h2>'+secIcon('next')+'Standing</h2><span class="help">where everything in this group has got to</span><a class="rt" onclick="S.filterGroup=\''+g.id+'\';go(\'projects\')">All projects →</a></div>'+
+  '<div class="box">'+(live.length?'<div class="standing">'+Object.keys(byStage).map(function(s){
+      return '<span class="st-c">'+esc(s)+'<b>'+byStage[s]+'</b></span>'}).join('')+'</div>'+
+      live.map(function(p){var t=T(p.type);
+        return '<div class="row click" onclick="openP(\''+p.id+'\')" style="--gc:'+g.color+'"><div class="grow"><div class="t">'+esc(p.name)+'</div>'+
+        '<div class="m">'+esc(stageName(p))+' · stage '+(p.stage+1)+' of '+t.stages.length+(p.next?' · '+esc(p.next):'')+'</div></div>'+
+        '<div style="width:110px">'+sbar(p)+'</div></div>'}).join('')
+    :'<div class="empty"><b>Nothing in this group yet</b>Add a project, or move one here from Settings.</div>')+'</div></div>'+
+
+  '<div class="sec"><div class="sec-t"><h2>'+secIcon('rm')+'Roadmap</h2><span class="help">what comes first in this group</span><a class="rt" onclick="S.filterGroup=\''+g.id+'\';go(\'roadmap\')">Open the roadmap →</a></div>'+
+  '<div class="horizons">'+HZ.map(function(h,i){
+    var list=mine.filter(function(p){return (p.when||'later')===h[0]&&!isLast(p)&&!p.quiet});
+    return '<div class="hz"><div class="hz-h"><i style="background:'+h[3]+'"></i><span class="n">'+h[1]+'</span><span class="c">'+list.length+'</span></div>'+
+      (list.length?list.map(function(p){return rcard(p,i)}).join(''):'<div class="empty">Nothing here.</div>')+'</div>'}).join('')+'</div></div>'+
+
+  '<div class="two">'+
+  '<div><div class="sec-t"><h2>'+secIcon('dec')+'Decisions</h2><span class="help">choices that span more than one project</span><a class="rt" onclick="openGroupDec(\''+g.id+'\')">+ record one</a></div>'+
+  '<div class="box">'+((g.decisions||[]).length?g.decisions.slice().sort(function(a,b){return b.no-a.no}).map(function(x){
+      return '<div class="dec '+(x.superseded?'sup':'')+'"><b>'+dno(x.no)+'</b><span>'+esc(x.text)+'</span><span class="sd">'+esc(fmt(new Date(x.at)))+'</span></div>'}).join('')
+      :'<div class="empty"><b>No decisions yet</b>Record one and it gets a number you can refer back to.</div>')+'</div>'+
+  '<div class="sec-t" style="margin-top:22px"><h2>Log</h2><span class="help">what happened, in order</span></div>'+
+  renderLogBox('group',g.id,g)+'</div>'+
+
+  '<aside class="rail">'+
+  '<div><div class="sec-t"><h2>'+secIcon('file')+'Files</h2><a class="rt" onclick="addFiles(\'\',\''+g.id+'\')">+ add files</a></div>'+
+  '<div class="box">'+((g.files||[]).length?g.files.filter(function(f){return !f.superseded}).map(function(f){
+      return '<div class="filerow" onclick="openFile(\''+f.id+'\')"><span class="ic" style="font-family:var(--mono);font-size:9.5px;border-radius:5px;padding:4px 6px;min-width:36px;text-align:center;font-weight:500;color:var(--ink-2);background:var(--panel-2)">'+esc(f.type||'FILE')+'</span>'+
+      '<div class="grow"><div class="n">'+esc(f.name)+'</div><div class="m">'+esc(fileLine(f))+'</div></div></div>'}).join('')
+      :'<div class="empty" style="padding:14px">Anything that belongs to the whole group. Drop files anywhere on this page.</div>')+'</div></div>'+
+  '<div><div class="sec-t"><h2>Recent activity</h2></div><div class="box">'+
+    (acts.length?acts.map(function(a){return '<div class="row"><span class="dotc" style="background:'+g.color+'"></span><div class="grow"><div class="t" style="font-weight:400">'+esc(a.text)+'</div><div class="m">'+ago(new Date(a.at))+' ago</div></div></div>'}).join('')
+      :'<div class="empty" style="padding:14px">Nothing yet.</div>')+'</div></div>'+
+  '</aside></div></div>';
+}
+function addGroupLink(id){
+  dlg('<div class="dh2"><h3>Add a link</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>Address or name</label><input type="text" id="glk" placeholder="example.com"></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="var t=document.getElementById(\'glk\').value.trim();if(t){var g=G(\''+id+'\');g.links=g.links||[];g.links.push(t)};closeOv();render()">Add</button></div>');
+}
+function editGroup(id){
+  var g=G(id);
+  dlg('<div class="dh2"><h3>Edit this group</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body">'+
+  '<div class="row2"><div><label>Name</label><input type="text" id="eg-n" value="'+esc(g.name)+'"></div>'+
+  '<div><label>Color</label><input type="color" id="eg-c" value="'+g.color+'" style="width:100%;height:38px;border:1px solid var(--line-2);border-radius:8px;background:var(--bg);padding:3px"></div></div>'+
+  '<label>Sharing</label><select id="eg-p"><option value="0"'+(!g.priv?' selected':'')+'>Can be shared</option><option value="1"'+(g.priv?' selected':'')+'>Private, never leaves this computer</option></select>'+
+  '<div class="helper">A private group never appears in an export, a share, or the review.</div></div>'+
+  '<div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="saveGroup(\''+id+'\')">Save</button></div>');
+}
+function saveGroup(id){
+  var g=G(id);
+  g.name=document.getElementById('eg-n').value.trim()||g.name;
+  g.color=document.getElementById('eg-c').value;
+  var priv=document.getElementById('eg-p').value==='1';
+  if(priv!==g.priv){g.priv=priv;S.projects.forEach(function(p){if(p.group===id)p.pub=!priv})}
+  closeOv();render();toast('Saved');
+}
+function openGroupDec(id){
+  var g=G(id);
+  dlg('<div class="dh2"><h3>Record a decision · '+dno(nextDecNo())+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>What did you decide, and why?</label><textarea id="gdc-t" rows="4" placeholder="Write it so future you understands the reasoning."></textarea><div class="helper">This one belongs to the whole group rather than one project.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="recordGroupDecision(\''+id+'\')">Record it</button></div>');
+}
+function recordGroupDecision(id){
+  var text=(document.getElementById('gdc-t').value||'').trim();if(!text)return;
+  var g=G(id);g.decisions=g.decisions||[];
+  var no=nextDecNo();
+  g.decisions.push({id:uid(),no:no,text:text,at:NOW,supersedes:null,superseded:false});
+  S.activity.unshift({id:uid(),group:id,pid:'',text:esc(g.name)+': '+dno(no)+' recorded',at:NOW,kind:'decision'});
+  closeOv();render();toast(dno(no)+' recorded');
+}
+
+/* ======================= DUPLICATE AND TEMPLATES (7.4) ======================= */
+
+function openProjectMore(id){
+  var p=Pr(id);if(!p)return;
+  dlg('<div class="dh2"><h3>'+esc(p.name)+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body">'+
+  '<div class="box"><div class="row click" onclick="closeOv();renameProject(\''+id+'\')"><div class="grow"><div class="t">Rename</div></div></div>'+
+  '<div class="row click" onclick="closeOv();duplicateProject(\''+id+'\')"><div class="grow"><div class="t">Duplicate</div><div class="m">Same group, type, checklist, links, and people. Nothing that has happened.</div></div></div>'+
+  '<div class="row click" onclick="closeOv();saveAsTemplate(\''+id+'\')"><div class="grow"><div class="t">Save as a template</div><div class="m">So the next one like it starts here.</div></div></div>'+
+  '<div class="row click" onclick="closeOv();deleteProject(\''+id+'\')"><div class="grow"><div class="t" style="color:var(--red)">Delete this project</div><div class="m">It goes to Recently deleted for thirty days.</div></div></div>'+
+  '</div></div><div class="foot"><button class="btn" onclick="closeOv()">Close</button></div>');
+}
+function deleteProject(id){
+  var p=Pr(id);if(!p)return;
+  dlg('<div class="dh2"><h3>Delete '+esc(p.name)+'?</h3><span class="x" onclick="closeOv()">✕</span></div>'+
+  '<div class="body"><div class="warn">Its checklist, decisions, releases, files, and log go with it.</div>'+
+  '<div class="helper">Nothing is gone for good. It sits in Recently deleted, in Settings, for thirty days.</div></div>'+
+  '<div class="foot"><button class="btn" onclick="closeOv()">Keep it</button>'+
+  '<button class="btn p danger" onclick="doDeleteProject(\''+id+'\')">Delete it</button></div>');
+}
+function doDeleteProject(id){
+  var p=Pr(id);if(!p)return;
+  var name=p.name;
+  S.projects=S.projects.filter(function(x){return x.id!==id});
+  closeOv();go('projects');
+  toast('<b>'+esc(name)+'</b> deleted. It is in Recently deleted for thirty days.');
+}
+function duplicateProject(id){
+  var p=Pr(id);if(!p)return;
+  var copy={id:uid(),name:'Copy of '+p.name,group:p.group,type:p.type,stage:0,enteredAt:NOW,
+    when:'next',next:'',notes:p.notes,pub:p.pub,wait:null,lastAct:NOW,
+    items:(p.items||[]).map(function(x){return {id:uid(),text:x.text,done:false,tag:x.tag}}),
+    decisions:[],files:[],links:(p.links||[]).slice(),releases:[],
+    people:(p.people||[]).map(function(x){return {id:uid(),n:x.n,r:x.r}}),
+    hist:[],logs:[],quiet:false,origin:null,parked:false,waitHist:[]};
+  S.projects.unshift(copy);
+  log(copy,copy.name+' started','move');
+  S.projectId=copy.id;S.ptab='work';S.view='project';render();
+  toast('Copied. Nothing that happened to the original came with it.');
+  setTimeout(function(){renameProject(copy.id)},120);
+}
+function renameProject(id){
+  var p=Pr(id);if(!p)return;
+  dlg('<div class="dh2"><h3>Name it</h3><span class="x" onclick="closeOv()">✕</span></div>'+
+  '<div class="body"><label>Name</label><input type="text" id="rn-n" value="'+esc(p.name)+'"></div>'+
+  '<div class="foot"><button class="btn" onclick="closeOv()">Leave it</button>'+
+  '<button class="btn p" onclick="var v=document.getElementById(\'rn-n\').value.trim();if(v)Pr(\''+id+'\').name=v;closeOv();render()">Save</button></div>');
+}
+function saveAsTemplate(id){
+  var p=Pr(id);if(!p)return;
+  dlg('<div class="dh2"><h3>Save as a template</h3><span class="x" onclick="closeOv()">✕</span></div>'+
+  '<div class="body"><label>Call it</label><input type="text" id="tp-n" value="'+esc(p.name)+'">'+
+  '<div class="helper">A template keeps the project type, the checklist, the links, and the people. It never keeps files, decisions, or the log.</div></div>'+
+  '<div class="foot"><button class="btn" onclick="closeOv()">Cancel</button>'+
+  '<button class="btn p" onclick="doSaveTemplate(\''+id+'\')">Save it</button></div>');
+}
+function doSaveTemplate(id){
+  var p=Pr(id),name=(document.getElementById('tp-n').value||'').trim();
+  if(!p||!name)return;
+  S.templates=S.templates||[];
+  S.templates.push({id:uid(),name:name,type:p.type,payload:{
+    items:(p.items||[]).map(function(x){return {text:x.text,tag:x.tag}}),
+    links:(p.links||[]).slice(),
+    people:(p.people||[]).map(function(x){return {n:x.n,r:x.r}}),
+    notes:p.notes}});
+  closeOv();render();toast('<b>'+esc(name)+'</b> is a template now. It shows up when you make a new project.');
+}
+function applyTemplate(np,tid){
+  var t=(S.templates||[]).find(function(x){return x.id===tid});
+  if(!t)return np;
+  var pay=t.payload||{};
+  np.type=t.type||np.type;
+  np.items=(pay.items||[]).map(function(x){return {id:uid(),text:x.text,done:false,tag:x.tag||''}});
+  np.links=(pay.links||[]).slice();
+  np.people=(pay.people||[]).map(function(x){return {id:uid(),n:x.n,r:x.r}});
+  if(pay.notes&&!np.notes)np.notes=pay.notes;
+  return np;
+}
+function delTemplate(id){
+  S.templates=(S.templates||[]).filter(function(x){return x.id!==id});
+  render();toast('Template removed');
+}
+
+/* ======================= RECENTLY DELETED (7.5) =======================
+   Nothing is gone the moment you delete it. The store keeps a tombstone for
+   thirty days, and this is where you get it back from. */
+
+var DELETED=[];
+var COLLECTION_NAMES={projects:'Project',ideas:'Idea',library:'Library',files:'File',
+  decisions:'Decision',releases:'Release',log_entries:'Log entry',checklist_items:'Checklist item',
+  people:'Person',links:'Link',groups:'Group',types:'Project type',inbox:'Inbox',
+  activity:'Activity',templates:'Template',stage_history:'Stage span',wait_history:'Past wait'};
+function loadDeleted(then){
+  if(!BRIDGE)return;
+  flushSave();
+  setTimeout(function(){
+    BRIDGE.recentlyDeleted(function(json){
+      var r=JSON.parse(json);
+      DELETED=r.ok?r.rows:[];
+      if(then)then();else render();
+    });
+  },260);
+}
+function restoreDeleted(collection,id){
+  if(!BRIDGE)return;
+  BRIDGE.restoreDeleted(collection,id,function(json){
+    var r=JSON.parse(json);
+    if(!r.ok){toast(esc(r.reason));return}
+    S=adopt(r.state);
+    loadDeleted(function(){render();toast('Put back')});
+  });
+}
+function renderDeletedBox(){
+  if(!DELETED.length)
+    return '<div class="box"><div class="empty" style="padding:18px">Nothing has been deleted in the last thirty days.</div></div>';
+  return '<div class="box plain-list">'+DELETED.slice(0,60).map(function(d){
+    return '<div class="row"><span class="k2">'+esc(COLLECTION_NAMES[d.collection]||d.collection)+'</span>'+
+    '<div class="grow"><div class="t">'+esc(d.name)+'</div><div class="m">'+
+      (d.when?esc(ago(new Date(d.when)))+' ago':'')+'</div></div>'+
+    '<button class="btn sm" onclick="restoreDeleted(\''+d.collection+'\',\''+d.id+'\')">Restore</button></div>'}).join('')+'</div>';
+}
+
+/* ======================= PEOPLE (7.8) =======================
+   Read only, and deliberately thin. A name, a role, and where they turn up. */
+
+function everyone(){
+  var by={};
+  S.projects.forEach(function(p){(p.people||[]).forEach(function(x){
+    var key=(x.n||'').trim().toLowerCase();if(!key)return;
+    by[key]=by[key]||{name:x.n,roles:{},projects:[]};
+    if(x.r)by[key].roles[x.r]=true;
+    by[key].projects.push(p);
+  })});
+  return Object.keys(by).sort().map(function(k){return by[k]});
+}
+function renderPeople(){
+  var list=everyone();
+  return '<div class="view"><div class="crumb"><a onclick="go(\'settings\')">Settings</a> / People</div>'+
+  '<div class="hd"><div><h1>People</h1><div class="sub">Everyone named on a project, and where they turn up. Dig is not a contact list, so there is nothing else here.</div></div></div>'+
+  '<div class="box">'+(list.length?list.map(function(x){
+    return '<div class="row"><span class="pp" style="padding:3px 10px 3px 4px"><span class="av">'+esc(ini(x.name))+'</span>'+esc(x.name)+'</span>'+
+    '<div class="grow"><div class="m">'+esc(Object.keys(x.roles).join(', ')||'no role written down')+'</div></div>'+
+    '<div class="acts">'+x.projects.map(function(p){
+      return '<button class="btn sm ghost" onclick="openP(\''+p.id+'\')">'+esc(p.name)+'</button>'}).join('')+'</div></div>'}).join('')
+    :'<div class="empty"><b>Nobody yet</b>Add a reviewer, a client, or a collaborator on any project and they will show up here.</div>')+'</div></div>';
+}
+
+/* ======================= NOT PLANNED (7.12) =======================
+   What Dig does not do, and why. Decisions, not apologies. */
+
+var NOT_PLANNED=[
+  ['Boards and drag and drop','A board makes you arrange work instead of doing it. Stages already say where something is.'],
+  ['Due dates on tasks','A date you set yourself is a date you will move. The next step and the days in a stage tell you more.'],
+  ['Priorities','With this few projects you know which one matters. A priority field only adds a thing to keep tidy.'],
+  ['Assignees','Dig is for one person. People are listed on a project so you know who is involved, not so work can be handed to them.'],
+  ['Time tracking','It changes what you do to what is measurable, and it never survives contact with a real week.'],
+  ['Money and invoicing','Your accountant has better software than anything that would fit in here.'],
+  ['Notifications','Nothing in Dig is urgent enough to interrupt you. Open it when you want to know.'],
+  ['Accounts and cloud','There is nothing to sign up for and nothing to leak. Your work is a file in your home folder.'],
+  ['AI','Dig writes nothing for you. Everything it shows you is something you told it.']];
+var CONSIDERING=[
+  ['Encryption at rest with a passphrase','No date, no promise.'],
+  ['An Android companion','The sync groundwork is in. The app is not.'],
+  ['More file previews','Office formats mainly.']];
+function renderNotPlanned(){
+  return '<div class="view"><div class="crumb"><a onclick="go(\'settings\')">Settings</a> / Not planned</div>'+
+  '<div class="hd"><div><h1>Not planned</h1><div class="sub">What Dig deliberately does not do, and why. These are decisions rather than gaps.</div></div></div>'+
+  '<div class="box np">'+NOT_PLANNED.map(function(x){
+    return '<div class="row"><div class="grow"><h3>'+esc(x[0])+'</h3><div class="why">'+esc(x[1])+'</div></div></div>'}).join('')+'</div>'+
+  '<div class="sec" style="margin-top:26px"><div class="sec-t"><h2>Being considered</h2><span class="help">no dates, no promises</span></div>'+
+  '<div class="box np">'+CONSIDERING.map(function(x){
+    return '<div class="row"><div class="grow"><h3>'+esc(x[0])+'</h3><div class="why">'+esc(x[1])+'</div></div></div>'}).join('')+'</div></div></div>';
+}
+
+/* ======================= BACKUP AND RESTORE (7.9) =======================
+   A JSON export is not a backup, because it does not carry the files. This is
+   one zip with the whole document and every file it points at. */
+
+function backupEverything(){
+  if(!BRIDGE){toast('Backing up needs the app.');return}
+  flushSave();
+  BRIDGE.backupEverything(JSON.stringify(persist()),function(json){
+    var r=JSON.parse(json);
+    if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast(esc(r.reason));return}
+    toast('Backed up to <b>'+esc(r.name)+'</b>. '+r.projects+' projects and '+r.blobs+' files, '+esc(r.size)+'.');
+  });
+}
+var PENDING_BACKUP=null;
+function restoreBackup(){
+  if(!BRIDGE)return;
+  BRIDGE.chooseBackup(function(json){
+    var r=JSON.parse(json);
+    if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast(esc(r.reason));return}
+    PENDING_BACKUP=r;
+    dlg('<div class="dh2"><h3>Restore from this backup?</h3><span class="x" onclick="PENDING_BACKUP=null;closeOv()">✕</span></div><div class="body">'+
+    '<div style="font-size:15px;font-weight:500">'+esc(r.name)+'</div>'+
+    '<div class="helper">Made '+esc(ago(new Date(r.made_at)))+' ago by Dig '+esc(r.dig||'')+'. It holds '+
+      r.projects+' projects, '+r.ideas+' ideas, and '+r.blobs_present+' files.</div>'+
+    '<div class="warn">This replaces everything Dig is holding right now: '+S.projects.length+' projects, '+
+      S.ideas.length+' ideas, and '+S.library.length+' in the library.</div>'+
+    '<div class="ok">Dig takes a backup of what is here first, without being asked.</div>'+
+    '<label>Type RESTORE to go ahead</label>'+
+    '<input type="text" id="rb-c" placeholder="RESTORE" oninput="document.getElementById(\'rb-go\').disabled=this.value.trim()!==\'RESTORE\'">'+
+    '</div><div class="foot"><button class="btn" onclick="PENDING_BACKUP=null;closeOv()">Cancel</button>'+
+    '<button class="btn p" id="rb-go" disabled onclick="doRestore()">Restore</button></div>');
+  });
+}
+function doRestore(){
+  if(!PENDING_BACKUP||!BRIDGE)return;
+  BRIDGE.restoreBackup(JSON.stringify(persist()),function(json){
+    var r=JSON.parse(json);
+    if(!r.ok){toast(esc(r.reason));return}
+    PENDING_BACKUP=null;
+    S=adopt(r.state);pickResurf();closeOv();go('home');flushSave();
+    toast('Restored. What was here before is kept as <b>'+esc(r.safety)+'</b>.');
+  });
+}
+function pickBackupFolder(){
+  if(!BRIDGE)return;
+  BRIDGE.chooseBackupFolder(function(json){
+    var r=JSON.parse(json);
+    if(!r.ok)return;
+    S.backupFolder=r.path;if(!S.backupEvery)S.backupEvery='weekly';
+    render();toast('Scheduled backups go to that folder from now on.');
+  });
+}
+function runScheduledBackup(){
+  if(!BRIDGE||!S.backupFolder||!S.backupEvery)return;
+  BRIDGE.scheduledBackup(JSON.stringify(persist()),S.backupFolder,S.backupEvery,function(json){
+    var r=JSON.parse(json);
+    if(r.ok)toast('Backed up quietly to <b>'+esc(r.name)+'</b>');
+    else if(r.reason&&r.reason!=='off'&&r.reason!=='not due')toast(esc(r.reason));
+  });
+}
+
+/* ======================= CSV IMPORT (7.10) =======================
+   Nothing is written until the columns are right and the person has seen what
+   the first few rows will become. */
+
+var CSV_KIND='projects',CSV_MAP=null,CSV_INFO=null;
+function importCsv(kind){
+  if(!BRIDGE)return;
+  CSV_KIND=kind;
+  BRIDGE.chooseCsv(kind,'',function(json){
+    var r=JSON.parse(json);
+    if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast(esc(r.reason));return}
+    CSV_INFO=r;CSV_MAP=r.mapping;csvDialog();
+  });
+}
+function csvDialog(){
+  var r=CSV_INFO;if(!r)return;
+  var labels={name:'Name',group:'Group',type:'Type',stage:'Stage',next:'Next step',
+              text:'The idea',notes:'Notes'};
+  dlg('<div class="dh2"><h3>Import '+esc(r.name||'a CSV')+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body">'+
+  '<div class="helper">Dig has guessed which column is which. Change any that are wrong.</div>'+
+  '<div class="row2" style="grid-template-columns:1fr 1fr">'+r.fields.map(function(f){
+    return '<div><label>'+esc(labels[f]||f)+'</label><select onchange="CSV_MAP[\''+f+'\']=parseInt(this.value,10);csvRepreview()">'+
+      '<option value="-1">Not in this file</option>'+
+      r.header.map(function(h,i){return '<option value="'+i+'"'+(CSV_MAP[f]===i?' selected':'')+'>'+esc(h||('column '+(i+1)))+'</option>'}).join('')+
+      '</select></div>'}).join('')+'</div>'+
+  '<label>What the first few rows become</label>'+
+  '<div class="box" id="csv-prev">'+csvPreviewRows()+'</div>'+
+  '<div class="helper">'+r.total+(r.total===1?' row':' rows')+' will come in'+
+    (r.skipped?', and '+r.skipped+' with nothing in the first column will be left out':'')+
+    '. Groups and types that do not exist yet are created.</div>'+
+  '</div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button>'+
+  '<button class="btn p" onclick="doCsvImport()">Bring them in</button></div>');
+}
+function csvPreviewRows(){
+  var r=CSV_INFO;if(!r||!r.rows.length)return '<div class="empty" style="padding:14px">Nothing to show.</div>';
+  return r.rows.map(function(row){
+    var bits=r.fields.filter(function(f){return row[f]}).map(function(f){return esc(row[f])});
+    return '<div class="row"><div class="grow"><div class="t">'+(bits[0]||'<i style="color:var(--ink-3)">no name</i>')+'</div>'+
+      '<div class="m">'+bits.slice(1).join(' · ')+'</div></div></div>'}).join('');
+}
+function csvRepreview(){
+  BRIDGE.previewCsv(CSV_KIND,JSON.stringify(CSV_MAP),function(json){
+    var r=JSON.parse(json);
+    if(!r.ok)return;
+    CSV_INFO.rows=r.rows;CSV_INFO.total=r.total;CSV_INFO.skipped=r.skipped;
+    var box=document.getElementById('csv-prev');
+    if(box)box.innerHTML=csvPreviewRows();
+  });
+}
+function doCsvImport(){
+  BRIDGE.readCsv(CSV_KIND,JSON.stringify(CSV_MAP),function(json){
+    var r=JSON.parse(json);
+    if(!r.ok){toast(esc(r.reason));return}
+    var made=0;
+    r.rows.forEach(function(row){
+      if(CSV_KIND==='ideas'){
+        S.ideas.unshift({id:uid(),text:row.text,desc:row.notes||'',at:NOW,opened:null,
+          group:groupNamed(row.group)});
+        made++;return;
+      }
+      var gid=groupNamed(row.group)||(S.groups[0]||{}).id||'';
+      var t=typeNamed(row.type);
+      var stage=0;
+      if(row.stage){
+        var at=T(t).stages.findIndex(function(s){return s.toLowerCase()===row.stage.toLowerCase()});
+        if(at>=0)stage=at;
+      }
+      S.projects.unshift({id:uid(),name:row.name,group:gid,type:t,stage:stage,enteredAt:NOW,
+        when:'next',next:row.next||'',items:[],decisions:[],files:[],links:[],notes:'',
+        pub:!G(gid).priv,wait:null,lastAct:NOW,releases:[],people:[],hist:[],logs:[],
+        quiet:false,origin:null,parked:false,waitHist:[]});
+      made++;
+    });
+    closeOv();render();
+    toast('Brought in '+made+(made===1?' row':' rows')+'.');
+  });
+}
+function groupNamed(name){
+  name=(name||'').trim();if(!name)return '';
+  var found=S.groups.find(function(g){return g.name.toLowerCase()===name.toLowerCase()});
+  if(found)return found.id;
+  var made={id:uid(),name:name,color:'#D14A7A',priv:false,description:'',links:[],logs:[],files:[],decisions:[]};
+  S.groups.push(made);return made.id;
+}
+function typeNamed(name){
+  name=(name||'').trim();
+  if(name){
+    var found=S.types.find(function(t){return t.name.toLowerCase()===name.toLowerCase()});
+    if(found)return found.id;
+    var made={id:uid(),name:name,stages:['Planned','In progress','Done'],check:{}};
+    S.types.push(made);return made.id;
+  }
+  return (S.types[0]||{}).id||'';
+}
+
+/* ======================= TEXT SIZE (7.11) ======================= */
+var TEXT_SIZES=[['s','Small','13px'],['m','Default','14px'],['l','Large','15.5px'],['xl','Larger','17px']];
+function applyTextSize(){
+  var found=TEXT_SIZES.find(function(x){return x[0]===(S.textSize||'m')})||TEXT_SIZES[1];
+  document.documentElement.style.setProperty('--base',found[2]);
+  document.body.style.fontSize=found[2];
+}
+function setTextSize(v){S.textSize=v;applyTextSize();render()}
+function applyMotionAndSize(){applyTextSize()}
+
+/* ======================= THE COMMAND LINE (7.6) =======================
+   `dig add "something"` from a terminal or a keyboard shortcut lands here. */
+function fromCommandLine(cmd){
+  if(!cmd||!S)return;
+  if(cmd.cmd==='open'){
+    var want=(cmd.name||'').toLowerCase();
+    var p=S.projects.find(function(x){return x.name.toLowerCase()===want})||
+          S.projects.find(function(x){return x.name.toLowerCase().indexOf(want)>=0});
+    if(p){openP(p.id);toast('Opened <b>'+esc(p.name)+'</b>')}
+    else toast('No project called '+esc(cmd.name));
+    return;
+  }
+  if(cmd.cmd!=='add')return;
+  var text=(cmd.text||'').trim();if(!text)return;
+  var project=null;
+  if(cmd.project){
+    var want2=cmd.project.toLowerCase();
+    project=S.projects.find(function(x){return x.name.toLowerCase()===want2})||
+            S.projects.find(function(x){return x.name.toLowerCase().indexOf(want2)>=0});
+    if(!project){toast('No project called '+esc(cmd.project)+'. It went to your inbox instead.')}
+  }
+  var kind=cmd.kind==='auto'?guessType(text):cmd.kind;
+  if(kind==='log'&&project){
+    addLog('project',project.id,text);
+    render();toast('Written in <b>'+esc(project.name)+'</b>\'s log');return;
+  }
+  if(project&&(kind==='todo'||kind==='bug'||kind==='idea')){
+    project.items.unshift({id:uid(),text:text.replace(/^!\s*/,''),done:false,tag:kind==='bug'?'bug':''});
+    project.lastAct=NOW;render();toast('Added to <b>'+esc(project.name)+'</b>\'s checklist');return;
+  }
+  if(kind==='link'||kind==='note'){
+    S.library.unshift({id:uid(),kind:kind,title:text,meta:kind==='link'?text:'',
+      group:project?project.group:''});
+    render();toast('Saved to the Library');return;
+  }
+  if(kind==='idea'){
+    S.ideas.unshift({id:uid(),text:text,desc:'',at:NOW,opened:null,group:''});
+    render();toast('Idea saved');return;
+  }
+  S.inbox.unshift({id:uid(),text:text,type:kind==='log'?'note':kind,at:NOW,guess:project?project.id:null});
+  render();toast('Saved to your inbox');
+}
+window.fromCommandLine=fromCommandLine;
+
+/* ======================= SYNC (5B) =======================
+   Off until you turn it on. When it is on it is your own machine answering
+   your own devices over your own private network, and nothing else. */
+
+var SYNC={running:false,port:8787,bound:[],reason:'',devices:[],code:null,tailscale:[],log:[]};
+var CONFLICTS=[];
+function loadSync(then){
+  if(!BRIDGE)return;
+  BRIDGE.syncStatus(function(json){SYNC=JSON.parse(json);if(then)then();else render()});
+}
+function syncOn(){
+  if(!BRIDGE)return;
+  BRIDGE.syncStart(S.syncPort||8787,function(json){
+    SYNC=JSON.parse(json);render();
+    if(!SYNC.running&&SYNC.reason)toast(esc(SYNC.reason));
+    else if(SYNC.running)toast('Sync is on, at '+esc(SYNC.bound.filter(function(a){return a!=='127.0.0.1'}).join(', ')));
+  });
+}
+function syncOff(){
+  if(!BRIDGE)return;
+  BRIDGE.syncStop(function(json){SYNC=JSON.parse(json);render();toast('Sync is off')});
+}
+function syncPair(){
+  if(!BRIDGE)return;
+  BRIDGE.syncPair(function(json){
+    var r=JSON.parse(json);
+    if(!r.ok){toast(esc(r.reason||'Dig could not make a code.'));return}
+    loadSync(function(){
+      dlg('<div class="dh2"><h3>Pair a device</h3><span class="x" onclick="closeOv()">✕</span></div>'+
+      '<div class="body"><div class="box"><div class="pairbox">'+
+        (r.qr?'<div class="qr">'+r.qr+'</div>':'')+
+        '<div><div class="code">'+esc(r.code)+'</div>'+
+        '<div class="where">'+esc(r.address)+' port '+r.port+'</div>'+
+        '<div class="where">Good for five minutes, and only once.</div></div>'+
+      '</div></div>'+
+      '<div class="helper">Point the other device at the code, or type it in. Both devices have to be on your Tailscale network. Nothing goes through anyone else.</div>'+
+      '</div><div class="foot"><button class="btn p" onclick="closeOv()">Done</button></div>');
+    });
+  });
+}
+function syncRevoke(id,name){
+  if(!BRIDGE)return;
+  BRIDGE.syncRevoke(id,function(){loadSync(function(){render();
+    toast('<b>'+esc(name||'That device')+'</b> can no longer read anything.')})});
+}
+function loadConflicts(then){
+  if(!BRIDGE)return;
+  BRIDGE.syncConflicts(function(json){
+    var r=JSON.parse(json);CONFLICTS=r.ok?r.rows:[];
+    if(then)then();else render();
+  });
+}
+function dismissConflicts(){
+  if(!BRIDGE||!CONFLICTS.length)return;
+  BRIDGE.syncConflictsSeen(JSON.stringify(CONFLICTS.map(function(c){return c.id})),function(){
+    CONFLICTS=[];render();toast('Cleared')});
+}
+function reloadFromDisk(){
+  if(!BRIDGE)return;
+  BRIDGE.reload(function(json){
+    var r=JSON.parse(json);
+    if(!r.ok||!r.state)return;
+    var where=S.view,which=S.projectId,tab=S.ptab;
+    S=adopt(r.state);S.view=where;S.projectId=which;S.ptab=tab;
+    render();toast('Something arrived from another device.');
+    loadConflicts();
+  });
+}
+function syncStatusLine(){
+  if(!SYNC.running)return '';
+  return '<div class="syncline on" onclick="go(\'settings\')"><i></i>Sync is on'+
+    (SYNC.devices.length?', '+SYNC.devices.filter(function(d){return !d.revoked}).length+' paired':'')+'</div>';
+}
+function renderSyncSettings(){
+  var addresses=SYNC.bound.filter(function(a){return a!=='127.0.0.1'});
+  return '<h2>Sync with my other devices</h2>'+
+  '<div class="hint">Off by default. When it is on, Dig answers only on loopback and on your Tailscale address, and only devices you have paired can read anything. Nothing passes through anyone else\'s servers.</div>'+
+  '<div class="box">'+
+  '<div class="srow"><span style="width:110px;color:var(--ink-3)">Server</span><span>'+
+    (SYNC.running?'On, at '+esc(addresses.join(', ')||'loopback only')+' port '+SYNC.port
+     :(SYNC.tailscale.length?'Off':'Off. There is no Tailscale address on this machine, so it cannot start.'))+
+    '</span><span class="sp"></span>'+
+    (SYNC.running?'<span class="del" onclick="syncOff()">turn off</span>'
+     :'<span class="act" onclick="syncOn()">Turn it on</span>')+'</div>'+
+  (SYNC.reason?'<div class="srow"><span style="width:110px;color:var(--ink-3)">Why not</span><span>'+esc(SYNC.reason)+'</span></div>':'')+
+  '<div class="srow"><span style="width:110px;color:var(--ink-3)">Port</span>'+
+    '<input type="text" value="'+(S.syncPort||8787)+'" onchange="S.syncPort=parseInt(this.value,10)||8787;render()">'+
+    '<span class="sp"></span><span style="font-size:12px;color:var(--ink-3)">Takes effect next time it starts.</span></div>'+
+  '<div class="srow"><span style="width:110px;color:var(--ink-3)">Devices</span><span>'+
+    (SYNC.devices.length?SYNC.devices.filter(function(d){return !d.revoked}).length+' paired':'None paired yet')+
+    '</span><span class="sp"></span>'+
+    (SYNC.running?'<span class="act" onclick="syncPair()">Pair a device</span>':'')+'</div>'+
+  SYNC.devices.map(function(d){
+    return '<div class="srow devrow"><span style="width:110px"></span><span>'+esc(d.name)+
+      (d.revoked?' <span class="badge rv">revoked</span>':'')+'</span>'+
+      '<span class="sp"></span><span style="font-size:12px;color:var(--ink-3)">'+
+      (d.last_synced?'last synced '+esc(ago(new Date(d.last_synced)))+' ago':'never synced')+'</span>'+
+      (d.revoked?'':'<span class="del" onclick="syncRevoke(\''+d.id+'\','+jsq(d.name)+')">revoke</span>')+'</div>'}).join('')+
+  '</div>'+
+  (CONFLICTS.length?'<h2>Where two devices disagreed</h2><div class="hint">Nothing was thrown away. These are the versions that lost, kept so you can look.</div>'+
+   '<div class="box">'+CONFLICTS.slice(0,20).map(function(c){
+     return '<div class="conflict">'+esc(c.reason)+'<div class="m">'+esc(c.collection)+' · '+esc(ago(new Date(c.at)))+' ago</div></div>'}).join('')+
+   '<div class="srow"><span class="sp"></span><span class="act" onclick="dismissConflicts()">I have seen these</span></div></div>':'');
+}
+
 /* ---- WEEK ---- */
+/* ---- YOUR REVIEW (7.2) ----
+   The week report, over any period and any scope. Nothing here is invented:
+   every line comes from a stage change, a decision, a release, a wait, a file
+   that was issued, or something written in a log. */
+
+var PERIODS=[['week','This week'],['lastweek','Last week'],['month','This month'],
+             ['lastmonth','Last month'],['quarter','This quarter'],['custom','A range you pick']];
+
+function periodRange(){
+  var n=NOW,y=n.getFullYear(),m=n.getMonth();
+  var startOfDay=function(d){return new Date(d.getFullYear(),d.getMonth(),d.getDate())};
+  var p=S.period||'week';
+  if(p==='week')return {from:startOfDay(new Date(n-6*DAY)),to:n,label:'Week of '+longDate(new Date(n-6*DAY))};
+  if(p==='lastweek'){var a=startOfDay(new Date(n-13*DAY)),b=new Date(startOfDay(new Date(n-7*DAY)).getTime()+DAY-1);
+    return {from:a,to:b,label:'Week of '+longDate(a)}}
+  if(p==='month')return {from:new Date(y,m,1),to:n,label:monthName(new Date(y,m,1))};
+  if(p==='lastmonth'){var a=new Date(y,m-1,1),b=new Date(y,m,1,0,0,0,-1);
+    return {from:a,to:b,label:monthName(a)}}
+  if(p==='quarter'){var q=Math.floor(m/3),a=new Date(y,q*3,1);
+    return {from:a,to:n,label:'Q'+(q+1)+' '+y}}
+  var from=S.periodFrom?new Date(S.periodFrom):new Date(n-30*DAY);
+  var to=S.periodTo?new Date(new Date(S.periodTo).getTime()+DAY-1):n;
+  return {from:from,to:to,label:longDate(from)+' to '+longDate(to)};
+}
+function longDate(d){return d.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
+function monthName(d){return d.toLocaleDateString('en-US',{month:'long',year:'numeric'})}
+function isoDay(d){var x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')}
+function within(at,r){var t=new Date(at);return t>=r.from&&t<=r.to}
+
+function reviewScope(){
+  var pub=S.publicOnly;
+  var gs=S.groups.filter(function(g){
+    if(S.reviewGroup&&S.reviewGroup!=='all'&&g.id!==S.reviewGroup)return false;
+    return !pub||!g.priv});
+  return {groups:gs,ids:gs.map(function(g){return g.id}),
+          hidden:S.groups.filter(function(g){return g.priv}).length};
+}
+
 function renderWeek(){
-  var pub=S.publicOnly;var gs=S.groups.filter(function(g){return !pub||!g.priv});var ids=gs.map(function(g){return g.id});
-  var week=S.activity.filter(function(a){return days(a.at)<=7&&ids.indexOf(a.group)>=0});var k=function(x){return week.filter(function(a){return a.kind===x})};
-  var waiting=S.projects.filter(function(p){return p.wait&&ids.indexOf(p.group)>=0});var next=S.projects.filter(function(p){return !p.wait&&!p.quiet&&!p.parked&&p.next&&ids.indexOf(p.group)>=0}).slice(0,4);
+  var r=periodRange(),sc=reviewScope(),ids=sc.ids;
+  var inScope=function(gid){return ids.indexOf(gid)>=0};
+  var acts=S.activity.filter(function(a){return within(a.at,r)&&inScope(a.group)});
+  var k=function(x){return acts.filter(function(a){return a.kind===x})};
+  var projects=S.projects.filter(function(p){return inScope(p.group)});
+  var waiting=projects.filter(function(p){return p.wait});
+  var next=projects.filter(function(p){return !p.wait&&!p.quiet&&!p.parked&&p.next}).slice(0,4);
+  var quiet=projects.filter(goneQuiet);
+  var releases=[];
+  projects.forEach(function(p){(p.releases||[]).forEach(function(x){
+    if(within(x.at,r))releases.push({p:p,r:x})})});
+  var issued=[];
+  projects.forEach(function(p){(p.files||[]).forEach(function(f){
+    if((f.version||f.doc_id)&&f.added_at&&within(f.added_at,r))issued.push({p:p,f:f})})});
+  sc.groups.forEach(function(g){(g.files||[]).forEach(function(f){
+    if((f.version||f.doc_id)&&f.added_at&&within(f.added_at,r))issued.push({g:g,f:f})})});
+  var highlights=[];
+  projects.forEach(function(p){logsOf(p).forEach(function(e){
+    if(e.highlight&&within(e.at,r))highlights.push({p:p,e:e})})});
+  sc.groups.forEach(function(g){logsOf(g).forEach(function(e){
+    if(e.highlight&&within(e.at,r))highlights.push({g:g,e:e})})});
+  highlights.sort(function(a,b){return new Date(b.e.at)-new Date(a.e.at)});
+
   var li=function(a){return '<li><i style="background:'+G(a.group).color+'"></i>'+esc(a.text)+'<span class="who">'+esc(G(a.group).name)+'</span></li>'};
   var sec=function(t,arr,alt){return '<h4>'+t+'</h4><ul>'+(arr.length?arr.map(li).join(''):'<div class="none">'+alt+'</div>')+'</ul>'};
-  return '<div class="view"><div class="hd"><div><h1>Your week</h1><div class="sub">Written for you from what actually happened. Nothing is made up. Edit it, then share it.</div></div><div class="r"><button class="btn" onclick="S.publicOnly=!S.publicOnly;render()">'+(pub?'Hiding private groups ✓':'Including private groups')+'</button><button class="btn p" onclick="savePdfWeek()">Save as PDF</button></div></div>'+
-  '<div class="sheet"><div class="top"><div><div class="o">'+esc(S.org)+'</div><div class="w">Week of '+weekOf()+'</div></div><div class="w">'+(pub?(S.groups.length-gs.length)+' private groups left out':'includes private groups')+'</div></div>'+
-  '<div class="kpis"><div class="kpi" style="--kc:var(--green)"><div class="l">Shipped</div><div class="v">'+k('ship').length+'</div></div><div class="kpi" style="--kc:var(--blue)"><div class="l">Moved forward</div><div class="v">'+k('move').length+'</div></div><div class="kpi" style="--kc:var(--teal)"><div class="l">Decisions made</div><div class="v">'+k('decision').length+'</div></div><div class="kpi" style="--kc:var(--amber)"><div class="l">Waiting on others</div><div class="v">'+waiting.length+'</div></div></div>'+
-  sec('Shipped',k('ship'),'Nothing shipped this week.')+sec('Moved forward',k('move'),'No stage changes this week.')+sec('Decided',k('decision'),'No decisions recorded this week.')+
-  '<h4>Waiting on</h4><ul>'+(waiting.length?waiting.map(function(p){return '<li><i style="background:'+G(p.group).color+'"></i>'+esc(p.wait.what)+'<span class="who">'+days(p.wait.since)+' days</span></li>'}).join(''):'<div class="none">Nothing is waiting on anyone else.</div>')+'</ul>'+
-  '<h4>Next week</h4><ul>'+(next.length?next.map(function(p){return '<li><i style="background:'+G(p.group).color+'"></i>'+esc(p.next)+'<span class="who">'+esc(p.name)+'</span></li>'}).join(''):'<div class="none">No next steps set.</div>')+'</ul>'+
-  '<div class="ft"><span>Made by Dig from stage changes, decisions, releases, and waits.</span><span>If nothing moved, it says so.</span></div></div></div>';
+  var row=function(color,text,right){return '<li><i style="background:'+color+'"></i>'+text+'<span class="who">'+right+'</span></li>'};
+
+  return '<div class="view"><div class="hd"><div><h1>Your review</h1><div class="sub">Written for you from what actually happened. Nothing is made up. Edit it, then share it.</div></div>'+
+  '<div class="r"><button class="btn" onclick="S.publicOnly=!S.publicOnly;render()">'+(S.publicOnly?'Hiding private groups ✓':'Including private groups')+'</button>'+
+  '<button class="btn p" onclick="savePdfWeek()">Save as PDF</button></div></div>'+
+
+  '<div class="chips"><select onchange="S.period=this.value;render()">'+
+    PERIODS.map(function(x){return '<option value="'+x[0]+'"'+((S.period||'week')===x[0]?' selected':'')+'>'+x[1]+'</option>'}).join('')+'</select>'+
+  (S.period==='custom'?'<input type="date" value="'+isoDay(r.from)+'" onchange="S.periodFrom=this.value;render()" style="font-size:12.5px;border:1px solid var(--line-2);border-radius:999px;padding:4px 10px;background:var(--panel);color:var(--ink)">'+
+   '<input type="date" value="'+isoDay(r.to)+'" onchange="S.periodTo=this.value;render()" style="font-size:12.5px;border:1px solid var(--line-2);border-radius:999px;padding:4px 10px;background:var(--panel);color:var(--ink)">':'')+
+  '<span class="chip '+((S.reviewGroup||'all')==='all'?'on':'')+'" onclick="S.reviewGroup=\'all\';render()">Everything</span>'+
+  S.groups.map(function(g){return '<span class="chip '+(S.reviewGroup===g.id?'on':'')+'" onclick="S.reviewGroup=\''+g.id+'\';render()"><i style="background:'+g.color+'"></i>'+esc(g.name)+'</span>'}).join('')+'</div>'+
+
+  '<div class="sheet"><div class="top"><div><div class="o">'+esc(S.org||'Your projects')+'</div><div class="w">'+esc(r.label)+
+    ((S.reviewGroup&&S.reviewGroup!=='all')?' · '+esc(G(S.reviewGroup).name):'')+'</div></div>'+
+    '<div class="w">'+(S.publicOnly?(sc.hidden?sc.hidden+(sc.hidden===1?' private group left out':' private groups left out'):'no private groups to leave out'):'includes private groups')+'</div></div>'+
+  '<div class="kpis"><div class="kpi" style="--kc:var(--green)"><div class="l">Shipped</div><div class="v">'+k('ship').length+'</div></div>'+
+  '<div class="kpi" style="--kc:var(--blue)"><div class="l">Moved forward</div><div class="v">'+k('move').length+'</div></div>'+
+  '<div class="kpi" style="--kc:var(--teal)"><div class="l">Decisions made</div><div class="v">'+k('decision').length+'</div></div>'+
+  '<div class="kpi" style="--kc:var(--amber)"><div class="l">Waiting on others</div><div class="v">'+waiting.length+'</div></div></div>'+
+  sec('Shipped',k('ship'),'Nothing shipped in this period.')+
+  sec('Moved forward',k('move'),'No stage changes in this period.')+
+  sec('Decided',k('decision'),'No decisions recorded in this period.')+
+  '<h4>Released</h4><ul>'+(releases.length?releases.map(function(x){
+    return row(G(x.p.group).color,esc(x.p.name)+' '+esc(x.r.v)+(x.r.note?' · '+esc(x.r.note):''),esc(fmt(new Date(x.r.at))))}).join('')
+    :'<div class="none">Nothing was released in this period.</div>')+'</ul>'+
+  '<h4>Files issued</h4><ul>'+(issued.length?issued.map(function(x){
+    var owner=x.p||x.g;
+    return row(G(x.p?x.p.group:x.g.id).color,esc(x.f.name)+(x.f.version?' · '+esc(x.f.version):'')+(x.f.doc_id?' · '+esc(x.f.doc_id):''),esc(owner.name))}).join('')
+    :'<div class="none">No documents were issued in this period.</div>')+'</ul>'+
+  '<h4>Log highlights</h4><ul>'+(highlights.length?highlights.map(function(x){
+    var owner=x.p||x.g;
+    return row(G(x.p?x.p.group:x.g.id).color,esc(x.e.text),esc(owner.name))}).join('')
+    :'<div class="none">Nothing was marked as a highlight in this period.</div>')+'</ul>'+
+  '<h4>Waiting on</h4><ul>'+(waiting.length?waiting.map(function(p){
+    return row(G(p.group).color,esc(p.wait.what),days(p.wait.since)+' days')}).join('')
+    :'<div class="none">Nothing is waiting on anyone else.</div>')+'</ul>'+
+  (quiet.length?'<h4>Gone quiet</h4><ul>'+quiet.map(function(p){
+    return row(G(p.group).color,esc(p.name),days(p.lastAct)+' days')}).join('')+'</ul>':'')+
+  '<h4>Next</h4><ul>'+(next.length?next.map(function(p){
+    return row(G(p.group).color,esc(p.next),esc(p.name))}).join('')
+    :'<div class="none">No next steps set.</div>')+'</ul>'+
+  '<div class="ft"><span>Made by Dig from stage changes, decisions, releases, waits, files, and your log.</span><span>If nothing moved, it says so.</span></div></div></div>';
 }
 
 /* ---- IDEAS ---- */
@@ -374,11 +1137,23 @@ function renderSettings(){
   '<h2>Project types and their stages</h2><div class="hint">Every project has a type. A type decides which stages it moves through and what each stage\'s checklist suggests.</div>'+
   S.types.map(function(t){return '<div class="box" style="margin-bottom:10px"><div class="srow"><input type="text" value="'+esc(t.name)+'" onchange="T(\''+t.id+'\').name=this.value;render()" style="font-weight:600"><span class="sp"></span><span style="font-size:12px;color:var(--ink-3)">'+S.projects.filter(function(p){return p.type===t.id}).length+' projects</span><span class="del" onclick="delType(\''+t.id+'\')">remove</span></div><div class="stages-ed">'+t.stages.map(function(s,i){return '<span class="stg-chip"><span style="font-family:var(--mono);font-size:10px;color:var(--ink-3)">'+(i+1)+'</span><input value="'+esc(s)+'" onchange="renameStage(\''+t.id+'\','+i+',this.value)"><span class="x" onclick="delStage(\''+t.id+'\','+i+')">✕</span></span>'}).join('')+'<span class="stg-chip add" onclick="addStage(\''+t.id+'\')">+ stage</span></div><div class="exp">'+t.stages.map(function(s){var e=t.check[s]||[];return '<div class="stg-name">'+esc(s)+' checklist suggests</div>'+e.map(function(x,ei){return '<div class="e"><span>· '+esc(x)+'</span><span class="x" onclick="delExp(\''+t.id+'\',\''+esc(s)+'\','+ei+')">remove</span></div>'}).join('')+'<div class="e"><input placeholder="Add something the '+esc(s)+' stage usually needs…" onkeydown="if(event.key===\'Enter\'){addExp(\''+t.id+'\',\''+esc(s)+'\',this.value);this.value=\'\'}"></div>'}).join('')+'</div></div>'}).join('')+
   '<div class="box"><div class="srow"><span class="act" onclick="addType()">+ add a type</span></div></div>'+
+  renderSyncSettings()+
   '<h2>Getting started</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Setup</span><span>Walk through the welcome again. It only adds what is missing.</span><span class="sp"></span><span class="act" onclick="S.obStep=1;go(\'setup\')">Run setup again</span></div>'+
   (hasExamples()?'<div class="srow"><span style="width:110px;color:var(--ink-3)">Examples</span><span>The example projects, ideas, and notes Dig added so you could look around.</span><span class="sp"></span><span class="act" onclick="removeExamples()">Remove the examples</span></div>':'')+
   '</div>'+
-  '<h2>Appearance</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Theme</span><div class="theme">'+['light','dark','system'].map(function(m){return '<button class="'+(S.theme===m?'on':'')+'" onclick="setTheme(\''+m+'\')">'+(m==='system'?'Follow system':m[0].toUpperCase()+m.slice(1))+'</button>'}).join('')+'</div></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Motion</span><span>Follows your system\'s reduce-motion setting.</span></div></div>'+
-  '<h2>Your data</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Where it lives</span><span style="font-family:var(--mono);font-size:12px">'+esc(DATA_PATH)+'</span><span class="sp"></span><span class="act" onclick="openDataFolder()">Open folder</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Backup</span><span>Export everything as one file, or bring one back in.</span><span class="sp"></span><span class="act" onclick="exportData()">Export</span><span class="act" onclick="importData()">Import</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Internet</span><span>Never used. Dig makes no network calls.</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">License</span><span>Free and open source, AGPLv3 · <a style="color:var(--blue);cursor:pointer" onclick="openAbout()">About Dig</a></span></div></div>'+
+  '<h2>Templates</h2><div class="hint">A template is the shape of a project you make often: its type, its checklist, its links, and its people.</div><div class="box">'+
+  ((S.templates||[]).length?S.templates.map(function(t){
+    return '<div class="srow"><span>'+esc(t.name)+'</span><span class="sp"></span><span style="font-size:12px;color:var(--ink-3)">'+esc((T(t.type)||{name:'no type'}).name)+' · '+((t.payload&&t.payload.items)||[]).length+' checklist items</span><span class="del" onclick="delTemplate(\''+t.id+'\')">remove</span></div>'}).join('')
+    :'<div class="empty" style="padding:18px">No templates yet. Save one from any project, under More.</div>')+'</div>'+
+  '<h2>Recently deleted</h2><div class="hint">Everything you delete waits here for thirty days before it goes for good.</div>'+
+  renderDeletedBox()+
+  '<h2>People</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Everyone</span><span>Every name on any project, and where they turn up.</span><span class="sp"></span><span class="act" onclick="go(\'people\')">Open the list</span></div></div>'+
+  '<h2>Appearance</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Theme</span><div class="theme">'+['light','dark','system'].map(function(m){return '<button class="'+(S.theme===m?'on':'')+'" onclick="setTheme(\''+m+'\')">'+(m==='system'?'Follow system':m[0].toUpperCase()+m.slice(1))+'</button>'}).join('')+'</div></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Text size</span><div class="textsize">'+TEXT_SIZES.map(function(x){return '<button class="'+((S.textSize||'m')===x[0]?'on':'')+'" onclick="setTextSize(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</div></div>'+
+  '<div class="srow"><span style="width:110px;color:var(--ink-3)">Motion</span><span>Follows your system\'s reduce-motion setting.</span></div></div>'+
+  '<h2>Your data</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Where it lives</span><span style="font-family:var(--mono);font-size:12px">'+esc(DATA_PATH)+'</span><span class="sp"></span><span class="act" onclick="openDataFolder()">Open folder</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Backup</span><span>Everything, including your files, as one zip.</span><span class="sp"></span><span class="act" onclick="backupEverything()">Back up everything…</span><span class="act" onclick="restoreBackup()">Restore…</span></div>'+
+  '<div class="srow"><span style="width:110px;color:var(--ink-3)">Scheduled</span><span>'+(S.backupFolder?'Every '+esc(S.backupEvery==='daily'?'day':'week')+' into '+esc(S.backupFolder)+', keeping the last ten.':'Off. Dig can put a quiet backup somewhere when one is due.')+'</span><span class="sp"></span>'+(S.backupFolder?'<span class="act" onclick="S.backupEvery=S.backupEvery===\'daily\'?\'weekly\':\'daily\';render()">'+esc(S.backupEvery==='daily'?'Make it weekly':'Make it daily')+'</span><span class="del" onclick="S.backupFolder=\'\';render()">turn off</span>':'<span class="act" onclick="pickBackupFolder()">Choose a folder</span>')+'</div>'+
+  '<div class="srow"><span style="width:110px;color:var(--ink-3)">Just the text</span><span>The document on its own as JSON. It does not carry your files, so it is not a backup.</span><span class="sp"></span><span class="act" onclick="exportData()">Export</span><span class="act" onclick="importData()">Import</span></div>'+
+  '<div class="srow"><span style="width:110px;color:var(--ink-3)">From a CSV</span><span>Projects or ideas somebody else\'s tool wrote out.</span><span class="sp"></span><span class="act" onclick="importCsv(\'projects\')">Projects…</span><span class="act" onclick="importCsv(\'ideas\')">Ideas…</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Internet</span><span>Dig makes no outbound internet requests of any kind. There are no accounts and no cloud. Sync is off by default, and when you turn it on it is a direct connection between your own devices on your own private network, with nothing passing through anyone else\'s servers.</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">License</span><span>Free and open source, AGPLv3 · <a style="color:var(--blue);cursor:pointer" onclick="openAbout()">About Dig</a></span></div></div>'+
   '</div></div>';
 }
 function exportData(){
@@ -428,7 +1203,7 @@ function obBody(step){
       '<div><i></i><span><b>What its next step is.</b> One line saying the thing that moves it forward.</span></div>'+
       '<div><i></i><span><b>What you decided along the way.</b> Numbered, dated, and kept.</span></div>'+
     '</div>'+
-    '<div class="plain">Everything stays on this computer. There are no accounts, and by default the app never touches the internet.</div>';
+    '<div class="plain">Dig makes no outbound internet requests of any kind. There are no accounts and no cloud. Sync is off by default, and when you turn it on it is a direct connection between your own devices on your own private network, with nothing passing through anyone else\'s servers.</div>';
 
   if(step===2)return '<div class="eyebrow">Who this is for</div>'+
     '<h1 style="font-size:24px;font-weight:600;letter-spacing:-.025em;margin-top:6px">What should Dig call this?</h1>'+
@@ -471,7 +1246,7 @@ function obBody(step){
     '<div class="three">'+
       '<div><i></i><span><b>Ctrl K adds anything, from anywhere.</b> An idea, a to-do, a bug, a note, a link. Dig works out where it goes.</span></div>'+
       '<div><i></i><span><b>Projects move through stages, and you decide when.</b> Nothing advances on its own and nothing is ever overdue.</span></div>'+
-      '<div><i></i><span><b>Nothing leaves this computer</b> unless you turn on sync between your own devices.</span></div>'+
+      '<div><i></i><span><b>Nothing leaves this computer.</b> Dig makes no outbound internet requests of any kind. Sync is off by default, and when you turn it on it is a direct connection between your own devices on your own private network.</span></div>'+
     '</div>'+
     '<div class="plain"><a style="color:var(--blue);cursor:pointer" onclick="openKeys()">See all shortcuts</a></div>';
 }
@@ -587,13 +1362,13 @@ function renderOverlays(){
   '<div class="overlay" id="ov-pal" onclick="if(event.target===this)closeOv()"><div class="dlg"><input class="cap-in" id="pal-in" placeholder="Find a project, idea, link, note, or decision…" oninput="palFilter(this.value)" onkeydown="palKey(event)"><div class="pal-list" id="pal-list"></div></div></div>'+
   '<div class="overlay" id="ov-dlg" onclick="if(event.target===this)closeOv()"><div class="dlg" id="dlg-body"></div></div>';
 }
-function dlg(html){document.getElementById('dlg-body').innerHTML=html;document.getElementById('ov-dlg').classList.add('open');var f=document.querySelector('#dlg-body input[type=text],#dlg-body textarea,#dlg-body select');if(f)setTimeout(function(){f.focus()},10);
+function dlg(html){document.getElementById('dlg-body').innerHTML=html;document.getElementById('ov-dlg').classList.add('open');wireA11y();var f=document.querySelector('#dlg-body input[type=text],#dlg-body textarea,#dlg-body select');if(f)setTimeout(function(){f.focus()},10);
   if(VIEWING&&document.getElementById('viewer-stage')){var v=fileById(VIEWING);if(v)setTimeout(function(){fillViewer(v)},0)}}
 function closeOv(){document.querySelectorAll('.overlay').forEach(function(o){o.classList.remove('open')})}
-function openKeys(){dlg('<div class="dh2"><h3>Keyboard shortcuts</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="keys"><div><span>Add something</span><kbd>Ctrl K</kbd></div><div><span>Find anything</span><kbd>/</kbd></div><div><span>Home</span><kbd>1</kbd></div><div><span>Projects</span><kbd>2</kbd></div><div><span>Roadmap</span><kbd>3</kbd></div><div><span>Ideas</span><kbd>4</kbd></div><div><span>Library</span><kbd>5</kbd></div><div><span>Your week</span><kbd>6</kbd></div><div><span>Close anything</span><kbd>Esc</kbd></div><div><span>This card</span><kbd>?</kbd></div></div></div><div class="foot"><button class="btn p" onclick="closeOv()">Got it</button></div>')}
+function openKeys(){dlg('<div class="dh2"><h3>Keyboard shortcuts</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="keys"><div><span>Add something</span><kbd>Ctrl K</kbd></div><div><span>Find anything</span><kbd>/</kbd></div><div><span>Home</span><kbd>1</kbd></div><div><span>Projects</span><kbd>2</kbd></div><div><span>Roadmap</span><kbd>3</kbd></div><div><span>Ideas</span><kbd>4</kbd></div><div><span>Library</span><kbd>5</kbd></div><div><span>Your review</span><kbd>6</kbd></div><div><span>Close anything</span><kbd>Esc</kbd></div><div><span>This card</span><kbd>?</kbd></div></div></div><div class="foot"><button class="btn p" onclick="closeOv()">Got it</button></div>')}
 
 /* ======================= ACTIONS ======================= */
-function go(v){S.view=v;render()}
+function go(v){S.view=v;render();if(v==='settings'){loadDeleted();loadSync();loadConflicts()}}
 function openP(id){S.projectId=id;S.view='project';render()}
 function setGroup(id){S.filterGroup=id;if(S.view==='home'||S.view==='project'||S.view==='settings')S.view='projects';render()}
 function setTheme(m){S.theme=m;render()}
@@ -633,9 +1408,12 @@ function startIdea(id){var x=S.ideas.find(function(y){return y.id===id});openNew
 /* new project */
 function openNew(gid,from){
   if(!S.types.length){toast('Add a project type in Settings first. Every project moves through one.');return}
-  dlg('<div class="dh2"><h3>'+(from?'Start this idea as a project':'New project')+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>Name</label><input type="text" id="np-n" value="'+esc(from?from.text:'')+'" placeholder="What is it called?"><div class="row2"><div><label>Group</label><select id="np-g">'+S.groups.map(function(g){return '<option value="'+g.id+'" '+(gid===g.id?'selected':'')+'>'+esc(g.name)+'</option>'}).join('')+'</select></div><div><label>Type</label><select id="np-t">'+S.types.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+' · '+t.stages.join(' → ')+'</option>'}).join('')+'</select></div></div><div class="row2"><div><label>First next step</label><input type="text" id="np-x" placeholder="The first thing that moves it forward"></div><div><label>On the roadmap</label><select id="np-w">'+HZ.map(function(h){return '<option value="'+h[0]+'" '+(h[0]==='next'?'selected':'')+'>'+h[1]+'</option>'}).join('')+'</select></div></div><div class="helper">It starts at the first stage of its type. Its group decides whether it can be shared.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="createP('+(from?"'"+from.id+"'":'null')+')">Create</button></div>')}
+  dlg('<div class="dh2"><h3>'+(from?'Start this idea as a project':'New project')+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>Name</label><input type="text" id="np-n" value="'+esc(from?from.text:'')+'" placeholder="What is it called?"><div class="row2"><div><label>Group</label><select id="np-g">'+S.groups.map(function(g){return '<option value="'+g.id+'" '+(gid===g.id?'selected':'')+'>'+esc(g.name)+'</option>'}).join('')+'</select></div><div><label>Type</label><select id="np-t">'+S.types.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+' · '+t.stages.join(' → ')+'</option>'}).join('')+'</select></div></div>'+
+    ((S.templates||[]).length?'<label>Start from a template</label><select id="np-tpl"><option value="">Start from nothing</option>'+S.templates.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+'</option>'}).join('')+'</select>':'')+'<div style="display:none"></div><div class="row2"><div><label>First next step</label><input type="text" id="np-x" placeholder="The first thing that moves it forward"></div><div><label>On the roadmap</label><select id="np-w">'+HZ.map(function(h){return '<option value="'+h[0]+'" '+(h[0]==='next'?'selected':'')+'>'+h[1]+'</option>'}).join('')+'</select></div></div><div class="helper">It starts at the first stage of its type. Its group decides whether it can be shared.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="createP('+(from?"'"+from.id+"'":'null')+')">Create</button></div>')}
 function createP(fromId){var n=document.getElementById('np-n').value.trim();if(!n)return;var gid=document.getElementById('np-g').value,tid=document.getElementById('np-t').value;
-  if(!tid||!S.types.some(function(t){return t.id===tid})){toast('Add a project type in Settings first. Every project moves through one.');return}var np={id:uid(),name:n,group:gid,type:tid,stage:0,enteredAt:NOW,when:document.getElementById('np-w').value,next:document.getElementById('np-x').value,items:[],decisions:[],files:[],links:[],notes:'',pub:!G(gid).priv,wait:null,lastAct:NOW,releases:[],people:[],hist:[],quiet:false,origin:null,parked:false,waitHist:[]};if(fromId){var x=S.ideas.find(function(y){return y.id===fromId});np.origin=x.text;np.notes=x.desc;S.ideas=S.ideas.filter(function(y){return y.id!==fromId});if(S.resurfId===fromId)pickResurf()}S.projects.unshift(np);log(np,n+' started','move');tickStartHere('added');closeOv();S.ptab='work';openP(np.id);toast('<b>'+esc(n)+'</b> is a project now')}
+  if(!tid||!S.types.some(function(t){return t.id===tid})){toast('Add a project type in Settings first. Every project moves through one.');return}var np={id:uid(),name:n,group:gid,type:tid,stage:0,enteredAt:NOW,when:document.getElementById('np-w').value,next:document.getElementById('np-x').value,items:[],decisions:[],files:[],links:[],notes:'',pub:!G(gid).priv,wait:null,lastAct:NOW,releases:[],people:[],hist:[],quiet:false,origin:null,parked:false,waitHist:[]};var tplEl=document.getElementById('np-tpl');
+  if(tplEl&&tplEl.value)np=applyTemplate(np,tplEl.value);
+  if(fromId){var x=S.ideas.find(function(y){return y.id===fromId});np.origin=x.text;np.notes=x.desc;S.ideas=S.ideas.filter(function(y){return y.id!==fromId});if(S.resurfId===fromId)pickResurf()}S.projects.unshift(np);log(np,n+' started','move');tickStartHere('added');closeOv();S.ptab='work';openP(np.id);toast('<b>'+esc(n)+'</b> is a project now')}
 /* stages */
 function openAdvance(id){var p=Pr(id),ns=nextStage(p),un=unmet(p);dlg('<div class="dh2"><h3>Move '+esc(p.name)+' to '+esc(ns)+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div style="color:var(--ink-2)">You\'ve been in <b>'+esc(stageName(p))+'</b> for '+days(p.enteredAt)+' days.</div>'+(un.length?'<div class="warn">A few things from this stage\'s checklist aren\'t done yet:<ul>'+un.map(function(e){return '<li>'+esc(e)+'</li>'}).join('')+'</ul></div>':'<div class="ok">Everything on this stage\'s checklist is done. Nice.</div>')+'<label>Next step in '+esc(ns)+'</label><input type="text" id="adv-x" placeholder="Optional, but it helps tomorrow-you"></div><div class="foot"><button class="btn" onclick="closeOv()">Not yet</button><button class="btn p" onclick="doAdvance(\''+id+'\')">'+(un.length?'Move anyway':'Move to '+esc(ns))+'</button></div>')}
 /* What the last stage move changed, so Undo can put back exactly that and
@@ -704,11 +1482,13 @@ function openAbout(){
   dlg('<div class="dh2"><h3>About Dig</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body">'+
   '<div style="display:flex;align-items:center;gap:14px"><span style="width:44px;height:44px;border-radius:13px;background:var(--blue);box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 6px 16px rgba(36,87,245,.3);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ABOUT_MARK+'</span>'+
   '<div><div style="font-size:16px;font-weight:600;letter-spacing:-.02em">Dig '+esc(VERSION)+'</div>'+
-  '<div style="font-size:12.5px;color:var(--ink-3);margin-top:2px">Free and open source, AGPLv3. Everything stays on this computer.</div></div></div>'+
+  '<div style="font-size:12.5px;color:var(--ink-3);margin-top:2px">Free and open source, AGPLv3.</div></div></div>'+
+  '<div class="plain" style="margin-top:14px;font-size:12.5px;color:var(--ink-3);border-left:2px solid var(--line-2);padding-left:12px;line-height:1.55">Dig makes no outbound internet requests of any kind. There are no accounts and no cloud. Sync is off by default, and when you turn it on it is a direct connection between your own devices on your own private network, with nothing passing through anyone else\'s servers.</div>'+
   '<label>Kamsiob</label><div class="box">'+ABOUT_LINKS.map(function(l){
     return '<div class="row click" onclick="openLink('+jsq(l[1])+')"><div class="grow"><div class="t">'+esc(l[0])+'</div><div class="m">'+esc(l[2])+'</div></div></div>'}).join('')+'</div>'+
   '<div class="ok" style="margin-top:14px">Built and carried by one person. If software made this way matters to you, there\'s a place to stand behind it. Either way, it\'s yours.</div>'+
-  '</div><div class="foot"><span class="l">Dig makes no network calls.</span><button class="btn" onclick="closeOv()">Close</button><button class="btn p" onclick="openLink(\'https://buymeacoffee.com/kamsiob\')">Support this work</button></div>');
+  '<div class="helper" style="margin-top:12px"><a style="color:var(--blue);cursor:pointer" onclick="closeOv();go(\'notplanned\')">What Dig deliberately does not do</a></div>'+
+  '</div><div class="foot"><span class="l">Local only, always.</span><button class="btn" onclick="closeOv()">Close</button><button class="btn p" onclick="openLink(\'https://buymeacoffee.com/kamsiob\')">Support this work</button></div>');
 }
 
 /* ======================= FILES =======================
@@ -1094,6 +1874,65 @@ function pdfRoadmap(){
       return '<div class="hz"><div class="hz-h"><i style="background:'+h[3]+'"></i><span class="n">'+h[1]+'</span><span class="c">'+list.length+'</span><span class="d">'+h[2]+'</span></div>'+(list.length?list.map(function(p){return rcard(p,i)}).join(''):'<div class="empty">Nothing here.</div>')+'</div>'}).join('')+'</div>'+
     pdfFoot(esc(omitted())+'. Private groups never appear here.');
 }
+
+/* ======================= REACHABLE BY KEYBOARD (7.11) =======================
+   The prototype drives almost everything from onclick on a span or a div,
+   which a mouse can reach and a keyboard cannot. Rather than rewrite every
+   render function, this walks what was just drawn and gives anything clickable
+   the things a keyboard and a screen reader need: a stop in the tab order, a
+   role, and a name. Enter and Space then act on it like a button. */
+
+var ICON_NAMES={'✕':'Close','★':'Mark as a highlight','←':'Previous','→':'Next',
+                '↵':'Enter','?':'Keyboard shortcuts'};
+function wireA11y(){
+  var app=document.getElementById('app');if(!app)return;
+  app.querySelectorAll('[onclick]').forEach(function(el){
+    var tag=el.tagName;
+    if(tag==='BUTTON'||tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA')return;
+    /* The dim behind a dialog closes it when clicked, but it is not a control
+       and a keyboard already has Esc. */
+    if(el.classList&&el.classList.contains('overlay'))return;
+    if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');
+    if(!el.hasAttribute('role'))el.setAttribute('role','button');
+    if(!el.getAttribute('aria-label')){
+      var text=(el.textContent||'').trim();
+      if(!text||text.length<2){
+        var name=ICON_NAMES[text]||el.getAttribute('title');
+        if(name)el.setAttribute('aria-label',name);
+      }
+    }
+  });
+  /* Purely decorative marks should not be read out at all. */
+  app.querySelectorAll('svg, .dotc, .sbar, .waitdot, .who .av, .groups i, .kpi .l')
+    .forEach(function(el){
+      if(el.tagName==='svg'&&!el.getAttribute('aria-hidden'))el.setAttribute('aria-hidden','true');
+      if(el.classList&&(el.classList.contains('dotc')||el.classList.contains('sbar')||
+         el.classList.contains('waitdot')||el.classList.contains('av')))
+        el.setAttribute('aria-hidden','true');
+    });
+  /* Landmarks, so a screen reader can jump between the two halves. */
+  var side=app.querySelector('.side'),main=app.querySelector('.main');
+  if(side){side.setAttribute('role','navigation');side.setAttribute('aria-label','Sections and groups')}
+  if(main)main.setAttribute('role','main');
+  var nav=app.querySelector('.nav');
+  if(nav)nav.setAttribute('aria-label','Go to');
+  app.querySelectorAll('.nav a').forEach(function(a){
+    a.setAttribute('role','link');
+    if(a.classList.contains('on'))a.setAttribute('aria-current','page');
+  });
+  var toasts=document.getElementById('toasts');
+  if(toasts){toasts.setAttribute('role','status');toasts.setAttribute('aria-live','polite')}
+  var overlay=document.getElementById('ov-dlg');
+  if(overlay){overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true')}
+}
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Enter'&&e.key!==' ')return;
+  var el=document.activeElement;
+  if(!el||!el.hasAttribute||!el.hasAttribute('onclick'))return;
+  var tag=el.tagName;
+  if(tag==='BUTTON'||tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA')return;
+  e.preventDefault();el.click();
+});
 
 /* ======================= KEYS ======================= */
 document.addEventListener('keydown',function(e){

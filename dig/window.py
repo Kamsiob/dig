@@ -131,10 +131,37 @@ class MainWindow(QMainWindow):
 
         self.bridge = bridge
         self._closing = False
+        self._queued: dict | None = None
+        self.page.loadFinished.connect(
+            lambda ok: QTimer.singleShot(700, self, self._flush_queued) if ok else None
+        )
         self._geometry_timer = QTimer(self)
         self._geometry_timer.setSingleShot(True)
         self._geometry_timer.setInterval(400)
         self._geometry_timer.timeout.connect(self._remember_geometry)
+
+    def queue_command(self, command: dict) -> None:
+        """Something the launch asked for, to run once the interface is up."""
+        self._queued = command
+
+    def handle_command(self, payload: dict) -> None:
+        """A second launch handed us something to do. Come to the front too."""
+        command = (payload or {}).get("command")
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        if command:
+            self._run_command(command)
+
+    def _run_command(self, command: dict) -> None:
+        import json as _json
+
+        self.page.runJavaScript(f"window.fromCommandLine&&fromCommandLine({_json.dumps(command)});1")
+
+    def _flush_queued(self) -> None:
+        if self._queued:
+            command, self._queued = self._queued, None
+            self._run_command(command)
 
     def load_ui(self) -> None:
         index = paths.ui_dir() / "index.html"

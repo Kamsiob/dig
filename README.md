@@ -9,9 +9,9 @@ personal projects, content, programs, who wants to open one window and see where
 everything actually stands.
 
 Dig makes no outbound internet requests of any kind. There are no accounts and
-there is no cloud. Sync is off by default, and when you turn it on it is a
-direct connection between your own devices on your own private network, with
-nothing passing through anyone else's servers.
+no cloud. Sync is off by default, and when you turn it on it is a direct
+connection between your own devices on your own private network, with nothing
+passing through anyone else's servers.
 
 ## What it does
 
@@ -30,8 +30,19 @@ nothing passing through anyone else's servers.
   out, so the reasoning survives.
 - **Releases and files.** What shipped and when, and the documents that came
   with it, kept inside Dig.
-- **Your week.** Written from what actually happened: stage changes, decisions,
-  releases, and waits. If nothing moved, it says so.
+- **Groups.** Every group has a page: what it is for, where all its projects
+  have got to, its own roadmap, files, links, decisions, and log.
+- **A log.** Dated notes on a project or a group. What happened, in order,
+  separate from the one standing description.
+- **Your review.** Written from what actually happened: stage changes,
+  decisions, releases, waits, documents issued, and anything you marked as a
+  highlight. This week, last week, this month, this quarter, or a range you
+  pick. If nothing moved, it says so.
+- **Files.** Any type, kept once by content, viewed inside Dig: images, PDFs,
+  text with line numbers, Markdown, CSV as a table, audio and video. Save a copy
+  or save them all as a zip with a manifest.
+- **Nothing is lost.** Deleting anything sends it to Recently deleted for thirty
+  days. Back up everything, including your files, as one zip.
 - **Sharing.** A PDF of one project, of your projects, of the roadmap, or of the
   week. Private groups never appear, and every export says what was left out.
 
@@ -60,6 +71,37 @@ launch Dig from your applications menu, or run `dig`.
 `./uninstall.sh` removes the launcher, the icons, and the command. It never
 touches your data.
 
+## From the terminal, or a keyboard shortcut
+
+Dig runs as a single instance. A second launch hands its arguments to the copy
+you already have open and exits.
+
+```
+dig                                    open Dig
+dig add "text"                         put it in the inbox
+dig add "text" --idea                  as an idea
+dig add "text" --bug                   as a bug
+dig add "text" --note                  keep it in the Library
+dig add "text" --link                  keep a link in the Library
+dig add "text" --project "Website refresh"
+                                       onto that project's checklist
+dig add "text" --log --project "Website refresh"
+                                       as a dated log entry
+dig open "Website refresh"             open that project
+```
+
+### A system wide capture key on KDE
+
+Wayland does not let an application grab a global key for itself, and Dig will
+not pretend otherwise. Bind the command instead, which works the same and stays
+under your control:
+
+1. System Settings, then Keyboard, then Shortcuts, then Add Command.
+2. Command: `sh -c 'dig add "$(kdialog --inputbox "Add to Dig")"'`
+3. Give it a shortcut, `Meta+D` is a good one.
+
+Whatever you type lands in Dig, and the window you already have open says so.
+
 ## Keyboard
 
 | | |
@@ -71,15 +113,37 @@ touches your data.
 | Roadmap | <kbd>3</kbd> |
 | Ideas | <kbd>4</kbd> |
 | Library | <kbd>5</kbd> |
-| Your week | <kbd>6</kbd> |
+| Your review | <kbd>6</kbd> |
 | Close anything | <kbd>Esc</kbd> |
 | Shortcuts | <kbd>?</kbd> |
 
+## Privacy
+
+Dig makes no outbound internet requests of any kind. There are no accounts and
+no cloud. Sync is off by default, and when you turn it on it is a direct
+connection between your own devices on your own private network, with nothing
+passing through anyone else's servers.
+
+The app enforces that rather than merely intending it: the web view refuses
+every request whose scheme is not already on this computer, so a stray link or
+a mistyped font URL cannot reach out. There is no telemetry, no crash
+reporting, and no update check.
+
+Sync, when you turn it on, binds to loopback and to your Tailscale address and
+to nothing else. If there is no Tailscale interface it refuses to start and says
+why. Only devices you have paired, with a one time code that works once and
+expires in five minutes, can read anything. See [docs/SYNC.md](docs/SYNC.md).
+
 ## Your data
 
-Everything lives in `~/.local/share/dig`: one SQLite file, the files you have
-added, and a rolling set of recent saves for recovery. Export the whole thing as
-JSON at any time from Settings, and bring it back the same way.
+Everything lives in `~/.local/share/dig`: one SQLite file holding a record per
+thing, the files you have added kept once each by their content, and a rolling
+set of recent saves for recovery.
+
+Nothing is ever gone by accident. Deleting anything sends it to Recently deleted
+for thirty days. **Back up everything** writes one zip with the whole document
+and every file, and restoring takes a backup of what is there first. The JSON
+export is the text only, so it is not a backup on its own, and Settings says so.
 
 Dig follows your desktop's light or dark setting, and its reduce motion setting.
 

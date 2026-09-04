@@ -336,6 +336,6 @@ def test_a_migrated_week_report_invents_nothing(v1_home, launch) -> None:
     ui = launch()
     ui.run("S.view='week';render();")
     body = ui.html()
-    assert "Nothing shipped this week." in body
-    assert "No stage changes this week." in body
-    assert "No decisions recorded this week." in body
+    assert "Nothing shipped in this period." in body
+    assert "No stage changes in this period." in body
+    assert "No decisions recorded in this period." in body

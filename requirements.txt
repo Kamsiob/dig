@@ -5,3 +5,7 @@ PySide6==6.11.1
 PySide6_Addons==6.11.1
 PySide6_Essentials==6.11.1
 shiboken6==6.11.1
+
+# Pure Python, no dependencies of its own. Used only to draw the pairing QR
+# code, which is made and shown on this computer and never leaves it.
+segno==1.6.6

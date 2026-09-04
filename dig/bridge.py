@@ -37,7 +37,17 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QFileDialog
 
 from dig import __app_name__, __version__, paths
+from dig import csvin
+from dig.backup import (
+    read_backup,
+    read_manifest,
+    scheduled_is_due,
+    scheduled_name,
+    trim_scheduled,
+    write_backup,
+)
 from dig.store import BlobStore, LoadResult, Store
+from dig.store.schema import SCHEMA_VERSION
 from dig.store.blobs import LARGE_FILE_BYTES
 
 SAVE_DEBOUNCE_MS = 300
@@ -138,6 +148,22 @@ def _unique_in_zip(name: str, used: set) -> str:
     return picked
 
 
+def _qr_svg(payload: str) -> str:
+    """The pairing details as a QR code, drawn here and shown here."""
+    try:
+        import io
+
+        import segno
+
+        code = segno.make(payload, error="m")
+        buffer = io.BytesIO()
+        code.save(buffer, kind="svg", scale=5, border=2,
+                  dark="#0E1421", light="#FFFFFF", xmldecl=False, svgns=True)
+        return buffer.getvalue().decode("utf-8")
+    except Exception:
+        return ""
+
+
 def _inside_digs_own(path: Path) -> bool:
     """Whether a path is one of Dig's own files, rather than anything at all."""
     roots = (paths.blobs_dir(), paths.attachments_dir(), paths.history_dir())
@@ -233,6 +259,7 @@ class Bridge(QObject):
     motionChanged = Signal(bool)
     pdfDone = Signal(str)
     saveFailed = Signal(str)
+    syncedFromElsewhere = Signal()
 
     def __init__(self, store: Store, window=None) -> None:
         super().__init__()
@@ -243,6 +270,9 @@ class Bridge(QObject):
         self._pdf_pages: list = []
         self._pdf_prof = None
         self._save_broken = False
+        self._pending_restore = None
+        self._pending_csv = ""
+        self._sync = None
         self._motion = read_reduce_motion()
         self.blobs = BlobStore(paths.blobs_dir())
         self._blob_mimes: dict[str, str] = {}
@@ -650,6 +680,242 @@ class Bridge(QObject):
             freed += self.blobs.remove(sha)
             removed += 1
         return json.dumps({"ok": True, "removed": removed, "freed": human_size(freed)})
+
+    # ------------------------------------------------------------------ sync
+
+    def sync_server(self):
+        """The server, made the first time it is asked for. It starts off."""
+        if self._sync is None:
+            from dig.sync import SyncServer
+
+            self._sync = SyncServer(paths.db_path(), paths.history_dir(), self.blobs, self)
+            self._sync.synced.connect(lambda: self.syncedFromElsewhere.emit())
+        return self._sync
+
+    @Slot(result=str)
+    def syncStatus(self) -> str:
+        return json.dumps(self.sync_server().status(), default=str)
+
+    @Slot(int, result=str)
+    def syncStart(self, port: int) -> str:
+        return json.dumps(self.sync_server().start(port or 8787), default=str)
+
+    @Slot(result=str)
+    def syncStop(self) -> str:
+        return json.dumps(self.sync_server().stop(), default=str)
+
+    @Slot(result=str)
+    def syncPair(self) -> str:
+        """A one time code, and the same thing as a QR code to point a phone at."""
+        made = self.sync_server().make_code()
+        if made.get("ok") and made.get("pairing"):
+            made["qr"] = _qr_svg(made["pairing"])
+        return json.dumps(made, default=str)
+
+    @Slot(str, result=bool)
+    def syncRevoke(self, device_id: str) -> bool:
+        return self.sync_server().revoke(device_id)
+
+    @Slot(result=str)
+    def syncConflicts(self) -> str:
+        from dig.sync import protocol
+
+        return json.dumps({"ok": True, "rows": protocol.open_conflicts(self._store)}, default=str)
+
+    @Slot(str, result=str)
+    def syncConflictsSeen(self, ids_json: str) -> str:
+        from dig.sync import protocol
+
+        try:
+            ids = json.loads(ids_json) or []
+        except ValueError:
+            ids = []
+        return json.dumps({"ok": True, "count": protocol.mark_conflicts_seen(self._store, ids)})
+
+    @Slot(result=str)
+    def reload(self) -> str:
+        """The document as it is on disk right now, after a sync brought things in."""
+        try:
+            return json.dumps({"ok": True, "state": self._store.load().state}, default=str)
+        except Exception:
+            return json.dumps({"ok": False, "reason": "Dig could not read it back."})
+
+    # --------------------------------------------------- backup and restore
+
+    @Slot(str, result=str)
+    def backupEverything(self, payload: str) -> str:
+        """One zip with the whole document and every file it points at."""
+        default = self.documents_dir() / f"dig-backup-{datetime.now():%Y-%m-%d}.zip"
+        chosen, _ = QFileDialog.getSaveFileName(
+            self._window, "Back up everything", str(default), "Zip archive (*.zip)"
+        )
+        if not chosen:
+            return json.dumps({"ok": False, "reason": "cancelled"})
+        try:
+            made = write_backup(Path(chosen), json.loads(payload), self.blobs)
+        except OSError:
+            return json.dumps(
+                {"ok": False, "reason": "Dig could not write there. Pick another folder."}
+            )
+        except ValueError:
+            return json.dumps({"ok": False, "reason": "Dig could not put that together."})
+        return json.dumps(
+            {
+                "ok": True, "name": made.path.name, "size": human_size(made.size),
+                "projects": made.projects, "blobs": made.blobs,
+            }
+        )
+
+    @Slot(result=str)
+    def chooseBackup(self) -> str:
+        """Pick a backup and say what is in it, without restoring anything."""
+        chosen, _ = QFileDialog.getOpenFileName(
+            self._window, "Restore from a backup", str(self.documents_dir()),
+            "Zip archive (*.zip);;All files (*)",
+        )
+        if not chosen:
+            return json.dumps({"ok": False, "reason": "cancelled"})
+        manifest = read_manifest(Path(chosen))
+        if manifest is None:
+            return json.dumps(
+                {"ok": False, "reason": "That is not a backup Dig made."}
+            )
+        if int(manifest.get("schema") or 0) > SCHEMA_VERSION:
+            return json.dumps(
+                {"ok": False, "reason": "That backup came from a newer Dig than this one."}
+            )
+        self._pending_restore = Path(chosen)
+        manifest["path"] = str(chosen)
+        manifest["name"] = Path(chosen).name
+        manifest["ok"] = True
+        return json.dumps(manifest)
+
+    @Slot(str, result=str)
+    def restoreBackup(self, current_payload: str) -> str:
+        """Put a backup back, after taking one of what is here first."""
+        source = getattr(self, "_pending_restore", None)
+        if source is None or not Path(source).is_file():
+            return json.dumps({"ok": False, "reason": "Pick a backup first."})
+        safety = paths.backups_dir() / f"before-restore-{datetime.now():%Y%m%d-%H%M%S}.zip"
+        try:
+            safety.parent.mkdir(parents=True, exist_ok=True)
+            write_backup(safety, json.loads(current_payload), self.blobs)
+        except Exception:
+            return json.dumps(
+                {"ok": False, "reason": "Dig could not back up what is here first, so it stopped."}
+            )
+        try:
+            state, blobs = read_backup(Path(source))
+            for sha, data in blobs:
+                if not self.blobs.has(sha):
+                    self.blobs.put_bytes(data, sha)
+        except Exception:
+            return json.dumps(
+                {"ok": False, "reason": "That backup could not be read. Nothing was changed."}
+            )
+        self._pending_restore = None
+        return json.dumps({"ok": True, "state": state, "safety": safety.name})
+
+    @Slot(str, str, str, result=str)
+    def scheduledBackup(self, payload: str, folder: str, cadence: str) -> str:
+        """Make the quiet backup if one is owed. Off unless a folder is set."""
+        if not folder or cadence not in ("daily", "weekly"):
+            return json.dumps({"ok": False, "reason": "off"})
+        place = Path(folder).expanduser()
+        if not scheduled_is_due(place, cadence):
+            return json.dumps({"ok": False, "reason": "not due"})
+        try:
+            place.mkdir(parents=True, exist_ok=True)
+            made = write_backup(place / scheduled_name(), json.loads(payload), self.blobs)
+            trim_scheduled(place)
+        except Exception:
+            return json.dumps(
+                {"ok": False, "reason": "Dig could not write the scheduled backup there."}
+            )
+        return json.dumps({"ok": True, "name": made.path.name})
+
+    @Slot(result=str)
+    def chooseBackupFolder(self) -> str:
+        chosen = QFileDialog.getExistingDirectory(
+            self._window, "Where should the scheduled backups go?", str(self.documents_dir())
+        )
+        return json.dumps({"ok": bool(chosen), "path": chosen})
+
+    # ---------------------------------------------------------- csv import
+
+    @Slot(str, str, result=str)
+    def chooseCsv(self, kind: str, mapping_json: str) -> str:
+        """Pick a CSV and say what Dig would make of it, without making it."""
+        chosen, _ = QFileDialog.getOpenFileName(
+            self._window, "Import from CSV", str(self.documents_dir()),
+            "CSV file (*.csv);;All files (*)",
+        )
+        if not chosen:
+            return json.dumps({"ok": False, "reason": "cancelled"})
+        try:
+            text = Path(chosen).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return json.dumps({"ok": False, "reason": "Dig could not read that file."})
+        self._pending_csv = text
+        result = csvin.preview(text, kind)
+        result["name"] = Path(chosen).name
+        return json.dumps(result)
+
+    @Slot(str, str, result=str)
+    def previewCsv(self, kind: str, mapping_json: str) -> str:
+        """The same preview again, with the columns mapped a different way."""
+        text = getattr(self, "_pending_csv", "")
+        if not text:
+            return json.dumps({"ok": False, "reason": "Pick a file first."})
+        try:
+            mapping = json.loads(mapping_json)
+        except ValueError:
+            mapping = None
+        return json.dumps(csvin.preview(text, kind, mapping))
+
+    @Slot(str, str, result=str)
+    def readCsv(self, kind: str, mapping_json: str) -> str:
+        """Every row, mapped, for the interface to turn into records."""
+        text = getattr(self, "_pending_csv", "")
+        if not text:
+            return json.dumps({"ok": False, "reason": "Pick a file first."})
+        try:
+            mapping = json.loads(mapping_json)
+        except ValueError:
+            return json.dumps({"ok": False, "reason": "Dig lost track of the columns."})
+        rows = csvin.read_all(text, kind, mapping)
+        self._pending_csv = ""
+        self._sync = None
+        return json.dumps({"ok": True, "rows": rows})
+
+    # ------------------------------------------------------ recently deleted
+
+    @Slot(result=str)
+    def recentlyDeleted(self) -> str:
+        """What has been deleted in the last thirty days, newest first."""
+        rows = []
+        for row in self._store.deleted_since(30):
+            rows.append(
+                {
+                    "collection": row["collection"],
+                    "id": row["id"],
+                    "name": row.get("name") or row.get("text") or row.get("title")
+                    or row.get("v") or "(no name)",
+                    "when": row.get("deleted_at") or "",
+                }
+            )
+        return json.dumps({"ok": True, "rows": rows})
+
+    @Slot(str, str, result=str)
+    def restoreDeleted(self, collection: str, record_id: str) -> str:
+        """Bring one deleted thing back, and hand the whole document back."""
+        try:
+            found = self._store.restore(collection, record_id)
+        except Exception:
+            return json.dumps({"ok": False, "reason": "Dig could not bring that back."})
+        if not found:
+            return json.dumps({"ok": False, "reason": "That one is no longer there to restore."})
+        return json.dumps({"ok": True, "state": self._store.load().state})
 
     # ------------------------------------------------------ export and import
 
