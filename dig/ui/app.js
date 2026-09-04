@@ -117,11 +117,6 @@ function greetingLine(){
 function weekOf(){return new Date(NOW-6*DAY).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
 
 function openLink(u){if(!BRIDGE)return;BRIDGE.openUrl(String(u),function(ok){if(!ok)toast('That is not an address Dig can open.')})}
-function openStored(path){
-  if(!path){toast('Dig does not keep a copy of that one.');return}
-  if(!BRIDGE)return;
-  BRIDGE.openPath(String(path),function(ok){if(!ok)toast('That file is not there anymore.')});
-}
 function openDataFolder(){if(BRIDGE)BRIDGE.openDataFolder(function(){})}
 
 function finishSetup(){
@@ -148,6 +143,7 @@ function start(){
     BRIDGE=channel.objects.bridge;
     BRIDGE.themeChanged.connect(function(t){SYS_THEME=t;if(S&&S.theme==='system')render()});
     BRIDGE.motionChanged.connect(setMotion);
+    wireDropping();
     BRIDGE.saveFailed.connect(function(msg){stickyToast('save',msg?esc(msg):'')});
     BRIDGE.pdfDone.connect(function(json){
       var r=JSON.parse(json);
@@ -212,7 +208,7 @@ function render(){
   document.documentElement.setAttribute('data-theme',S.theme==='system'?SYS_THEME:S.theme);
   var app=document.getElementById('app');
   app.className='app';
-  app.innerHTML=renderSide()+'<main class="main" id="main">'+renderView(S.view)+'</main>'+renderOverlays()+'<div class="toasts" id="toasts"></div>';
+  app.innerHTML=renderSide()+'<main class="main" id="main">'+renderView(S.view)+'</main>'+renderOverlays()+'<div class="drop-veil" id="drop-veil"><div class="card"><b>Drop to keep a copy</b><span>Dig keeps its own copy. Your file is not moved.</span></div></div><div class="toasts" id="toasts"></div>';
   renderToasts();
   scheduleSave();
 }
@@ -301,7 +297,7 @@ function renderProject(){
   '<div class="sec"><div class="sec-t"><h2>Notes</h2><span class="help">click to write · saves as you type</span></div><div class="box"><div class="notes-ed" contenteditable="true" oninput="Pr(\''+p.id+'\').notes=this.innerText;scheduleSave()">'+(esc(p.notes)||'<span style="color:var(--ink-3)">Talking points, the demo order, the sentence that matters.</span>')+'</div></div></div>'+
   '</div><aside class="rail">'+
   '<div><div class="sec-t"><h2>'+secIcon('ppl')+'People</h2><a class="rt" onclick="addPerson(\''+p.id+'\')">+ add</a></div><div class="box">'+(p.people.length?'<div class="people">'+p.people.map(function(x){return '<span class="pp"><span class="av">'+esc(ini(x.n))+'</span>'+esc(x.n)+'<small>'+esc(x.r)+'</small></span>'}).join('')+'</div>':'<div class="empty" style="padding:14px">Nobody yet. Reviewers, clients, collaborators.</div>')+'</div></div>'+
-  '<div><div class="sec-t"><h2>'+secIcon('file')+'Files</h2><a class="rt" onclick="addFile(\''+p.id+'\')">+ add</a></div><div class="box">'+(p.files.length?p.files.map(function(f){return '<div class="file" onclick="openStored('+jsq(f.stored_path||'')+')"><span class="ic '+esc(f.type)+'">'+esc(f.type)+'</span><div>'+esc(f.name)+'<div class="m">'+esc(f.meta)+'</div></div></div>'}).join(''):'<div class="empty" style="padding:14px">Specs, mockups, exports, assets.</div>')+'</div></div>'+
+  '<div><div class="sec-t"><h2>'+secIcon('file')+'Files</h2><a class="rt" onclick="addFiles(\''+p.id+'\',\'\')">+ add files</a></div><div class="box">'+(p.files.length?p.files.filter(function(f){return !f.superseded}).map(function(f){return '<div class="filerow" onclick="openFile(\''+f.id+'\')"><span class="ic '+esc(f.type)+'" style="font-family:var(--mono);font-size:9.5px;border-radius:5px;padding:4px 6px;min-width:36px;text-align:center;font-weight:500;color:var(--ink-2);background:var(--panel-2)">'+esc(f.type||'FILE')+'</span><div class="grow"><div class="n">'+esc(f.name)+'</div><div class="m">'+esc(fileLine(f))+'</div></div></div>'}).join('')+(p.files.filter(function(f){return f.sha256}).length?'<div class="filerow" style="cursor:pointer;color:var(--ink-3)" onclick="saveAllFiles(\''+p.id+'\',\'\')"><div class="grow"><div class="n" style="font-weight:400">Save all files…</div></div></div>':''):'<div class="empty" style="padding:14px">Specs, mockups, exports, assets. Drop them anywhere on this page.</div>')+'</div></div>'+
   '<div><div class="sec-t"><h2>'+secIcon('rel')+'Releases</h2><a class="rt" onclick="addRelease(\''+p.id+'\')">+ add</a></div><div class="box">'+(p.releases.length?p.releases.slice().reverse().map(function(r){return '<div class="rel"><span class="v">'+esc(r.v)+'</span><span>'+esc(r.note)+'</span><span class="m">'+fmt(r.at)+'</span></div>'}).join(''):'<div class="empty" style="padding:14px">Nothing released yet.</div>')+'</div></div>'+
   '</aside></div>';
 }
@@ -350,11 +346,19 @@ function renderIdeas(){
 }
 
 /* ---- LIBRARY ---- */
+function libraryRows(){
+  /* Links and notes are library entries; unowned files are file records. Both
+     read as one list, with the same chips. */
+  var rows=S.library.map(function(x){return {id:x.id,kind:x.kind,title:x.title,meta:x.meta,group:x.group,entry:x}});
+  (S.libraryFiles||[]).forEach(function(f){
+    rows.push({id:f.id,kind:'file',title:f.name,meta:fileLine(f),group:'',file:f})});
+  return rows;
+}
 function renderLibrary(){
-  var list=S.library.filter(function(x){return S.libFilter==='all'||(S.libFilter==='unsorted'?!x.group:x.kind===S.libFilter)});
-  return '<div class="view"><div class="hd"><div><h1>Library</h1><div class="sub">Links, notes, and files worth keeping. Paste a link into "Add something" and it lands here.</div></div><div class="r"><button class="btn p" onclick="openCap(\'link\')">Add a link or note</button></div></div>'+
+  var list=libraryRows().filter(function(x){return S.libFilter==='all'||(S.libFilter==='unsorted'?!x.group:x.kind===S.libFilter)});
+  return '<div class="view"><div class="hd"><div><h1>Library</h1><div class="sub">Links, notes, and files worth keeping. Paste a link into "Add something" and it lands here.</div></div><div class="r"><button class="btn" onclick="addFiles(\'\',\'\')">Add files</button><button class="btn p" onclick="openCap(\'link\')">Add a link or note</button></div></div>'+
   '<div class="chips">'+[['all','Everything'],['link','Links'],['note','Notes'],['file','Files'],['unsorted','Not in a group']].map(function(x){return '<span class="chip '+(S.libFilter===x[0]?'on':'')+'" onclick="S.libFilter=\''+x[0]+'\';render()">'+x[1]+'</span>'}).join('')+'</div>'+
-  '<div class="box lib">'+(list.length?list.map(function(x){var open=x.kind==='link'?'openLink('+jsq(x.meta||x.title)+')':(x.kind==='file'?'openStored('+jsq(x.stored_path||'')+')':'');return '<div class="row'+(open?' click':'')+'"'+(open?' onclick="'+open+'"':'')+'><span class="k '+x.kind+'">'+x.kind.toUpperCase()+'</span><div class="grow"><div class="t">'+esc(x.title)+'</div><div class="m">'+esc(x.meta)+'</div></div><span class="w">'+(x.group?esc(G(x.group).name):'no group')+'<a onclick="event.stopPropagation();openSortLib(\''+x.id+'\')">'+(x.group?'move':'put in a group')+'</a></span></div>'}).join(''):'<div class="empty"><b>Nothing here yet</b>Links, notes, and files you add will show up here.</div>')+'</div></div>';
+  '<div class="box lib">'+(list.length?list.map(function(x){var open=x.kind==='link'?'openLink('+jsq(x.meta||x.title)+')':(x.kind==='file'?'openFile(\''+x.id+'\')':'');return '<div class="row'+(open?' click':'')+'"'+(open?' onclick="'+open+'"':'')+'><span class="k '+x.kind+'">'+x.kind.toUpperCase()+'</span><div class="grow"><div class="t">'+esc(x.title)+'</div><div class="m">'+esc(x.meta)+'</div></div><span class="w">'+(x.group?esc(G(x.group).name):'no group')+'<a onclick="event.stopPropagation();'+(x.file?'moveFile(\''+x.id+'\')':'openSortLib(\''+x.id+'\')')+'">'+(x.group?'move':'put in a project or group')+'</a></span></div>'}).join(''):'<div class="empty"><b>Nothing here yet</b>Links, notes, and files you add will show up here. Drop a file anywhere on this page.</div>')+'</div></div>';
 }
 
 /* ---- SETTINGS ---- */
@@ -412,7 +416,8 @@ function renderOverlays(){
   '<div class="overlay" id="ov-pal" onclick="if(event.target===this)closeOv()"><div class="dlg"><input class="cap-in" id="pal-in" placeholder="Find a project, idea, link, note, or decision…" oninput="palFilter(this.value)" onkeydown="palKey(event)"><div class="pal-list" id="pal-list"></div></div></div>'+
   '<div class="overlay" id="ov-dlg" onclick="if(event.target===this)closeOv()"><div class="dlg" id="dlg-body"></div></div>';
 }
-function dlg(html){document.getElementById('dlg-body').innerHTML=html;document.getElementById('ov-dlg').classList.add('open');var f=document.querySelector('#dlg-body input[type=text],#dlg-body textarea,#dlg-body select');if(f)setTimeout(function(){f.focus()},10)}
+function dlg(html){document.getElementById('dlg-body').innerHTML=html;document.getElementById('ov-dlg').classList.add('open');var f=document.querySelector('#dlg-body input[type=text],#dlg-body textarea,#dlg-body select');if(f)setTimeout(function(){f.focus()},10);
+  if(VIEWING&&document.getElementById('viewer-stage')){var v=fileById(VIEWING);if(v)setTimeout(function(){fillViewer(v)},0)}}
 function closeOv(){document.querySelectorAll('.overlay').forEach(function(o){o.classList.remove('open')})}
 function openKeys(){dlg('<div class="dh2"><h3>Keyboard shortcuts</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="keys"><div><span>Add something</span><kbd>Ctrl K</kbd></div><div><span>Find anything</span><kbd>/</kbd></div><div><span>Home</span><kbd>1</kbd></div><div><span>Projects</span><kbd>2</kbd></div><div><span>Roadmap</span><kbd>3</kbd></div><div><span>Ideas</span><kbd>4</kbd></div><div><span>Library</span><kbd>5</kbd></div><div><span>Your week</span><kbd>6</kbd></div><div><span>Close anything</span><kbd>Esc</kbd></div><div><span>This card</span><kbd>?</kbd></div></div></div><div class="foot"><button class="btn p" onclick="closeOv()">Got it</button></div>')}
 
@@ -497,16 +502,6 @@ function openDec(id){var p=Pr(id);dlg('<div class="dh2"><h3>Record a decision ·
 function recordDecision(pid,text,sup){text=(text||'').trim();if(!text)return;var p=Pr(pid);var no=nextDecNo();var s=sup?parseInt(sup,10):null;if(s){var old=p.decisions.find(function(x){return x.no===s});if(old)old.superseded=true}p.decisions.push({no:no,text:text,at:NOW,supersedes:s,superseded:false});log(p,p.name+': '+dno(no)+' recorded','decision');toast(dno(no)+' recorded')}
 /* links, files, people, releases */
 function addLink(id){dlg('<div class="dh2"><h3>Add a link</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>Address or name</label><input type="text" id="lk" placeholder="github.com/… or Google Play"></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="var t=document.getElementById(\'lk\').value.trim();if(t){Pr(\''+id+'\').links.push(t)};closeOv();render()">Add</button></div>')}
-function addFile(id){
-  if(!BRIDGE){toast('Adding a file needs the app.');return}
-  BRIDGE.pickFile(id,'All files (*)',function(json){
-    var r=JSON.parse(json);
-    if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast(esc(r.reason));return}
-    var p=Pr(id);if(!p)return;
-    p.files.unshift({type:r.type,name:r.name,meta:r.meta,stored_path:r.stored_path});
-    p.lastAct=NOW;render();toast('Kept a copy of <b>'+esc(r.name)+'</b>');
-  });
-}
 function addPerson(id){dlg('<div class="dh2"><h3>Add a person</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="row2"><div><label>Name</label><input type="text" id="pn" placeholder="Who"></div><div><label>Role</label><input type="text" id="pr" placeholder="reviewer, client, collaborator"></div></div><div class="helper">Just a name and a role. Dig is not a contact list.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="var n=document.getElementById(\'pn\').value.trim();if(n){Pr(\''+id+'\').people.push({n:n,r:document.getElementById(\'pr\').value})};closeOv();render()">Add</button></div>')}
 function addRelease(id){dlg('<div class="dh2"><h3>Record a release</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="row2"><div><label>Version</label><input type="text" id="rv" placeholder="1.2.0"></div><div><label>What\'s in it</label><input type="text" id="rn" placeholder="One line"></div></div><div class="helper">Dated today. Shows up on the project\'s roadmap and in Your week.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="doRelease(\''+id+'\')">Record</button></div>')}
 function doRelease(id){var v=document.getElementById('rv').value.trim();if(!v)return;var p=Pr(id);p.releases.push({v:v,at:NOW,note:document.getElementById('rn').value});log(p,p.name+' '+v+' released','ship');closeOv();render();toast('<b>'+esc(p.name)+' '+esc(v)+'</b> is on the record')}
@@ -542,6 +537,325 @@ function openAbout(){
     return '<div class="row click" onclick="openLink('+jsq(l[1])+')"><div class="grow"><div class="t">'+esc(l[0])+'</div><div class="m">'+esc(l[2])+'</div></div></div>'}).join('')+'</div>'+
   '<div class="ok" style="margin-top:14px">Built and carried by one person. If software made this way matters to you, there\'s a place to stand behind it. Either way, it\'s yours.</div>'+
   '</div><div class="foot"><span class="l">Dig makes no network calls.</span><button class="btn" onclick="closeOv()">Close</button><button class="btn p" onclick="openLink(\'https://buymeacoffee.com/kamsiob\')">Support this work</button></div>');
+}
+
+/* ======================= FILES =======================
+   Every file lives in the blob store, kept once by its SHA256. A record points
+   at the bytes and carries the name, the document id, the version, and which
+   stage it belongs to. Moving a file between owners is a change to the record,
+   never a copy. */
+
+function allFiles(){
+  var out=[];
+  S.projects.forEach(function(p){(p.files||[]).forEach(function(f){out.push(f)})});
+  S.groups.forEach(function(g){(g.files||[]).forEach(function(f){out.push(f)})});
+  (S.libraryFiles||[]).forEach(function(f){out.push(f)});
+  return out;
+}
+function fileById(id){return allFiles().find(function(f){return f.id===id})}
+function ownerFiles(f){
+  if(f.project_id){var p=Pr(f.project_id);return p?p.files:[]}
+  if(f.group_id){var g=S.groups.find(function(x){return x.id===f.group_id});return g?g.files:[]}
+  return S.libraryFiles||[];
+}
+function fileHome(pid,gid){
+  if(pid){var p=Pr(pid);if(p){p.files=p.files||[];return p.files}}
+  if(gid){var g=S.groups.find(function(x){return x.id===gid});if(g){g.files=g.files||[];return g.files}}
+  S.libraryFiles=S.libraryFiles||[];return S.libraryFiles;
+}
+function fileSize(n){var v=Number(n)||0,u=['bytes','KB','MB','GB'];
+  for(var i=0;i<u.length;i++){if(v<1024||i===3)return (i?v.toFixed(1).replace(/\.0$/,''):Math.round(v))+' '+u[i];v/=1024}}
+function fileLine(f){
+  var bits=[];
+  if(f.doc_id)bits.push(f.doc_id);
+  if(f.version)bits.push(f.version);
+  bits.push(fileSize(f.size));
+  return bits.join(' · ');
+}
+
+/* ---- getting them in ---- */
+function addFiles(pid,gid){
+  if(!BRIDGE){toast('Adding files needs the app.');return}
+  BRIDGE.pickFiles(pid||'',gid||'',function(json){takeFiles(JSON.parse(json),pid,gid)});
+}
+function takeFiles(r,pid,gid){
+  if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast(esc(r.reason));return}
+  var home=fileHome(pid,gid),added=0,clashes=[],first='';
+  r.files.forEach(function(rec){
+    rec.id=uid();rec.doc_id='';rec.version='';rec.descr='';rec.stage='';
+    rec.previous_file_id=null;rec.superseded=false;
+    var clash=home.find(function(x){return x.name===rec.name&&!x.superseded});
+    if(clash){clashes.push({rec:rec,clash:clash,pid:pid,gid:gid});return}
+    home.unshift(rec);added++;if(!first)first=rec.name;
+  });
+  if(pid&&Pr(pid))Pr(pid).lastAct=NOW;
+  render();
+  (r.refused||[]).forEach(function(n){toast('Dig could not take in <b>'+esc(n)+'</b>')});
+  (r.large||[]).forEach(function(n){toast('<b>'+esc(n)+'</b> is a big file. It is kept, but it will make backups slow.')});
+  if(added)toast(added===1?'Kept a copy of <b>'+esc(first)+'</b>':'Kept copies of '+added+' files');
+  /* Asking comes after the re-render, because rendering rebuilds the overlays. */
+  PENDING_CLASHES=clashes;
+  askAboutClash();
+}
+var PENDING_CLASHES=[];
+var PENDING_FILE=null;
+function askAboutClash(){
+  PENDING_FILE=PENDING_CLASHES.shift()||null;
+  var f=PENDING_FILE;if(!f)return;
+  dlg('<div class="dh2"><h3>There is already a file called that</h3><span class="x" onclick="skipClash()">✕</span></div>'+
+  '<div class="body"><div style="font-size:15px;font-weight:500">'+esc(f.rec.name)+'</div>'+
+  '<div class="helper">The one here is '+esc(fileLine(f.clash))+'. The new one is '+esc(fileSize(f.rec.size))+'.</div>'+
+  '<div class="helper">Nothing is ever written over. Either keep both, or keep the old one on the record as the version before this.</div></div>'+
+  '<div class="foot"><button class="btn" onclick="skipClash()">Cancel</button>'+
+  '<button class="btn" onclick="resolveClash(\'both\')">Keep both</button>'+
+  '<button class="btn p" onclick="resolveClash(\'version\')">Replace as a new version</button></div>');
+}
+function skipClash(){PENDING_FILE=null;closeOv();if(PENDING_CLASHES.length)askAboutClash()}
+function resolveClash(how){
+  var f=PENDING_FILE;if(!f)return;PENDING_FILE=null;
+  var home=fileHome(f.pid,f.gid);
+  if(how==='version'){
+    f.rec.previous_file_id=f.clash.id;
+    f.rec.doc_id=f.clash.doc_id||'';
+    f.clash.superseded=true;
+  }else{
+    var stem=f.rec.name.replace(/(\.[^.]+)$/,''),ext=(f.rec.name.match(/\.[^.]+$/)||[''])[0],n=2;
+    while(home.some(function(x){return x.name===stem+' ('+n+')'+ext}))n++;
+    f.rec.name=stem+' ('+n+')'+ext;
+  }
+  home.unshift(f.rec);
+  if(BRIDGE)BRIDGE.rememberMime(f.rec.sha256,f.rec.mime||'');
+  if(f.pid&&Pr(f.pid))Pr(f.pid).lastAct=NOW;
+  closeOv();render();
+  toast(how==='version'?'<b>'+esc(f.rec.name)+'</b> is the current version. The one before it is kept.':'Kept as <b>'+esc(f.rec.name)+'</b>');
+  if(PENDING_CLASHES.length)askAboutClash();
+}
+
+/* ---- dropping and pasting ---- */
+var DROP_DEPTH=0;
+function dropTarget(){
+  if(S.view==='project'&&S.projectId)return {pid:S.projectId,gid:''};
+  if(S.view==='group'&&S.groupId)return {pid:'',gid:S.groupId};
+  if(S.view==='library')return {pid:'',gid:''};
+  return null;
+}
+function wireDropping(){
+  document.addEventListener('dragenter',function(e){
+    if(!dropTarget()||!e.dataTransfer||Array.prototype.indexOf.call(e.dataTransfer.types||[],'Files')<0)return;
+    e.preventDefault();DROP_DEPTH++;showVeil(true)});
+  document.addEventListener('dragover',function(e){if(dropTarget())e.preventDefault()});
+  document.addEventListener('dragleave',function(){if(DROP_DEPTH>0)DROP_DEPTH--;if(!DROP_DEPTH)showVeil(false)});
+  document.addEventListener('drop',function(e){
+    var where=dropTarget();DROP_DEPTH=0;showVeil(false);
+    if(!where||!e.dataTransfer)return;
+    e.preventDefault();
+    var paths=[];
+    for(var i=0;i<e.dataTransfer.files.length;i++){
+      var f=e.dataTransfer.files[i];
+      if(f.path)paths.push(f.path);
+    }
+    if(!paths.length){
+      var uris=e.dataTransfer.getData('text/uri-list')||'';
+      uris.split(/\r?\n/).forEach(function(u){
+        if(u&&u.indexOf('file://')===0)paths.push(decodeURIComponent(u.slice(7)))});
+    }
+    if(!paths.length){toast('Dig could not tell what was dropped. Use Add files.');return}
+    if(BRIDGE)BRIDGE.addPaths(JSON.stringify(paths),where.pid,where.gid,function(json){
+      takeFiles(JSON.parse(json),where.pid,where.gid)});
+  });
+  document.addEventListener('paste',function(e){
+    var where=dropTarget();if(!where||!e.clipboardData)return;
+    var items=e.clipboardData.items||[];
+    for(var i=0;i<items.length;i++){
+      if(items[i].kind!=='file')continue;
+      var blob=items[i].getAsFile();if(!blob)continue;
+      e.preventDefault();
+      var reader=new FileReader();
+      reader.onload=function(){
+        var stamp=new Date().toISOString().slice(0,19).replace('T',' ').replace(/:/g,'-');
+        var ext=(blob.type.split('/')[1]||'bin').replace(/[^a-z0-9]/gi,'');
+        BRIDGE.addPasted('Pasted '+stamp+'.'+ext,reader.result,where.pid,where.gid,function(json){
+          takeFiles(JSON.parse(json),where.pid,where.gid)});
+      };
+      reader.readAsDataURL(blob);
+      return;
+    }
+  });
+}
+function showVeil(on){
+  var v=document.getElementById('drop-veil');
+  if(v)v.classList.toggle('on',!!on);
+}
+
+/* ---- the viewer ---- */
+var VIEWING=null;
+function openFile(id){
+  var f=fileById(id);if(!f)return;
+  VIEWING=id;
+  var siblings=ownerFiles(f).filter(function(x){return !x.superseded}),
+      at=siblings.findIndex(function(x){return x.id===id});
+  var stages=[''];
+  if(f.project_id){var p=Pr(f.project_id);if(p)stages=stages.concat(T(p.type).stages)}
+  var older=f.previous_file_id?fileById(f.previous_file_id):null;
+
+  document.getElementById('dlg-body').className='dlg viewer';
+  dlg('<div class="vh"><div class="grow"><h3>'+esc(f.name)+'</h3>'+
+      '<div class="m"><span class="badge g">'+esc(f.type||'FILE')+'</span>'+esc(fileSize(f.size))+
+      (f.added_at?' · added '+esc(fmt(new Date(f.added_at))):'')+'</div></div>'+
+      '<div class="nav"><button onclick="stepFile(-1)"'+(at<=0?' disabled':'')+'>←</button>'+
+      '<button onclick="stepFile(1)"'+(at>=siblings.length-1?' disabled':'')+'>→</button></div>'+
+      '<span class="x" onclick="closeViewer()" style="cursor:pointer;color:var(--ink-3);font-size:16px">✕</span></div>'+
+    '<div class="fields">'+
+      '<div><label>Document id</label><input type="text" value="'+esc(f.doc_id)+'" placeholder="Optional" onchange="editFile(\''+f.id+'\',\'doc_id\',this.value)"></div>'+
+      '<div><label>Version</label><input type="text" value="'+esc(f.version)+'" placeholder="v1.0" onchange="editFile(\''+f.id+'\',\'version\',this.value)"></div>'+
+      '<div><label>Description</label><input type="text" value="'+esc(f.descr)+'" placeholder="One line" onchange="editFile(\''+f.id+'\',\'descr\',this.value)"></div>'+
+      '<div><label>Stage</label><select onchange="editFile(\''+f.id+'\',\'stage\',this.value)">'+
+        stages.map(function(s){return '<option value="'+esc(s)+'"'+(f.stage===s?' selected':'')+'>'+(s?esc(s):'Not tied to a stage')+'</option>'}).join('')+
+      '</select></div></div>'+
+    '<div class="stage" id="viewer-stage"><div class="none">Opening…</div></div>'+
+    (older?'<div class="vers">This replaced <b>'+esc(older.name)+'</b>, '+esc(fileLine(older))+'.<a onclick="openFile(\''+older.id+'\')">Open the one before</a></div>':'')+
+    '<div class="vfoot"><button class="btn" onclick="openWithSystem(\''+f.id+'\')">Open with the system app</button>'+
+      '<button class="btn" onclick="saveFileCopy(\''+f.id+'\')">Save a copy…</button>'+
+      '<button class="btn ghost" onclick="revealFile(\''+f.id+'\')">Reveal in folder</button>'+
+      '<span class="sp"></span>'+
+      '<button class="btn ghost" onclick="moveFile(\''+f.id+'\')">Move to…</button>'+
+      '<button class="btn ghost danger" onclick="deleteFile(\''+f.id+'\')">Delete</button></div>');
+}
+var TEXT_KINDS=['md','markdown','json','csv','log','txt','text','py','js','ts','css','html',
+  'htm','yml','yaml','toml','sh','ini','conf','cfg','xml','svg','sql','rs','go','java','c','h','cpp'];
+function isTextFile(f){
+  var mime=(f.mime||'').toLowerCase(),ext=(f.type||'').toLowerCase();
+  if(mime.indexOf('text/')===0)return true;
+  if(mime==='application/json'||mime==='application/xml')return true;
+  return TEXT_KINDS.indexOf(ext)>=0;
+}
+/* The stage is filled once Python has handed back a path for the bytes, or the
+   text itself for a text file. Nothing in the page ever sees the blob store. */
+function fillViewer(f){
+  var stage=document.getElementById('viewer-stage');
+  if(!stage)return;
+  if(!f.sha256){stage.innerHTML='<div class="none"><b>Dig does not have these bytes</b>The record is here, the file is not.</div>';return}
+  if(!BRIDGE){stage.innerHTML='<div class="none">Viewing needs the app.</div>';return}
+  if(isTextFile(f)){
+    BRIDGE.readText(f.sha256,function(json){
+      var r=JSON.parse(json);
+      var box=document.getElementById('viewer-stage');
+      if(!box||VIEWING!==f.id)return;
+      if(!r.ok){box.innerHTML='<div class="none">'+esc(r.reason)+'</div>';return}
+      box.innerHTML='<div class="text">'+textBody(f,r.text)+'</div>';
+    });
+    return;
+  }
+  BRIDGE.viewUrl(f.sha256,f.name,function(url){
+    var box=document.getElementById('viewer-stage');
+    if(!box||VIEWING!==f.id)return;
+    if(!url){box.innerHTML='<div class="none">Dig could not open those bytes.</div>';return}
+    var mime=(f.mime||'').toLowerCase();
+    if(mime.indexOf('image/')===0)
+      box.innerHTML='<img src="'+esc(url)+'" alt="'+esc(f.name)+'" onclick="this.classList.toggle(\'full\')">';
+    else if(mime==='application/pdf')
+      box.innerHTML='<embed src="'+esc(url)+'" type="application/pdf">';
+    else if(mime.indexOf('video/')===0)
+      box.innerHTML='<video src="'+esc(url)+'" controls></video>';
+    else if(mime.indexOf('audio/')===0)
+      box.innerHTML='<audio src="'+esc(url)+'" controls></audio>';
+    else
+      box.innerHTML='<div class="none"><b>No preview for this kind of file</b>Dig keeps it safely and hands it to whatever opens it.</div>';
+  });
+}
+function textBody(f,text){
+  var ext=(f.type||'').toLowerCase();
+  if(ext==='csv')return csvTable(text);
+  if(ext==='md'||ext==='markdown')
+    return '<div style="padding:10px 16px 0"><span class="chip" onclick="toggleMd(this)">Show it as written</span></div>'+
+           '<div class="md">'+esc(text)+'</div>';
+  return '<pre>'+text.split(/\r?\n/).map(function(line,i){
+    return '<span class="ln">'+(i+1)+'</span>'+esc(line)}).join('\n')+'</pre>';
+}
+function toggleMd(chip){
+  var box=chip.parentNode.nextElementSibling;
+  if(!box)return;
+  var raw=box.getAttribute('data-raw')||box.textContent;
+  box.setAttribute('data-raw',raw);
+  if(chip.textContent==='Show it as written'){
+    chip.textContent='Show it rendered';
+    box.innerHTML='<pre style="padding:0">'+esc(raw)+'</pre>';
+  }else{chip.textContent='Show it as written';box.textContent=raw}
+}
+function csvTable(text){
+  var rows=text.split(/\r?\n/).filter(function(l){return l.length}).slice(0,400);
+  return '<table>'+rows.map(function(line,i){
+    var cells=line.split(',');
+    return '<tr>'+cells.map(function(c){
+      return (i?'<td>':'<th>')+esc(c.replace(/^"|"$/g,''))+(i?'</td>':'</th>')}).join('')+'</tr>'}).join('')+'</table>';
+}
+function stepFile(by){
+  var f=fileById(VIEWING);if(!f)return;
+  var siblings=ownerFiles(f).filter(function(x){return !x.superseded}),
+      at=siblings.findIndex(function(x){return x.id===VIEWING});
+  var next=siblings[at+by];
+  if(next)openFile(next.id);
+}
+function closeViewer(){VIEWING=null;var b=document.getElementById('dlg-body');if(b)b.className='dlg';closeOv()}
+function editFile(id,field,value){
+  var f=fileById(id);if(!f)return;f[field]=value;scheduleSave();
+}
+function openWithSystem(id){var f=fileById(id);if(f&&BRIDGE)BRIDGE.openBlob(f.sha256,function(ok){if(!ok)toast('Dig does not have those bytes anymore.')})}
+function revealFile(id){var f=fileById(id);if(f&&BRIDGE)BRIDGE.revealBlob(f.sha256,function(ok){if(!ok)toast('Dig does not have those bytes anymore.')})}
+function saveFileCopy(id){
+  var f=fileById(id);if(!f||!BRIDGE)return;
+  BRIDGE.saveCopy(f.sha256,f.name,function(json){var r=JSON.parse(json);
+    if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast(esc(r.reason));return}
+    toast('Saved <b>'+esc(r.name)+'</b>')});
+}
+function saveAllFiles(pid,gid){
+  var list=fileHome(pid,gid).filter(function(f){return f.sha256});
+  if(!list.length){toast('There are no files to save.');return}
+  var name=pid&&Pr(pid)?slug(Pr(pid).name):(gid?slug(G(gid).name):'library-files');
+  if(BRIDGE)BRIDGE.saveAllFiles(JSON.stringify(list),name,function(json){
+    var r=JSON.parse(json);
+    if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast(esc(r.reason));return}
+    toast('Saved '+r.count+' files into <b>'+esc(r.name)+'</b>')});
+}
+function moveFile(id){
+  var f=fileById(id);if(!f)return;
+  dlg('<div class="dh2"><h3>Move this file</h3><span class="x" onclick="closeOv()">✕</span></div>'+
+  '<div class="body"><div style="font-weight:500;margin-bottom:8px">'+esc(f.name)+'</div>'+
+  '<label>Put it with</label><select id="mv-to">'+
+    '<option value="lib">The Library, in no project</option>'+
+    S.groups.map(function(g){return '<option value="g:'+g.id+'"'+(f.group_id===g.id?' selected':'')+'>'+esc(g.name)+' (the group)</option>'}).join('')+
+    S.projects.map(function(p){return '<option value="p:'+p.id+'"'+(f.project_id===p.id?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+
+  '</select><div class="helper">The bytes do not move. Only where the file is filed.</div></div>'+
+  '<div class="foot"><button class="btn" onclick="closeOv()">Cancel</button>'+
+  '<button class="btn p" onclick="doMoveFile(\''+id+'\')">Move it</button></div>');
+}
+function doMoveFile(id){
+  var f=fileById(id);if(!f)return;
+  var to=document.getElementById('mv-to').value;
+  var from=ownerFiles(f);
+  var at=from.findIndex(function(x){return x.id===id});
+  if(at>=0)from.splice(at,1);
+  f.project_id=null;f.group_id=null;f.stage='';
+  if(to.indexOf('p:')===0)f.project_id=to.slice(2);
+  else if(to.indexOf('g:')===0)f.group_id=to.slice(2);
+  fileHome(f.project_id,f.group_id).unshift(f);
+  VIEWING=null;closeOv();render();toast('<b>'+esc(f.name)+'</b> moved');
+}
+function deleteFile(id){
+  var f=fileById(id);if(!f)return;
+  var home=ownerFiles(f);
+  var at=home.findIndex(function(x){return x.id===id});
+  if(at<0)return;
+  var copy=home[at];
+  home.splice(at,1);
+  VIEWING=null;closeOv();render();
+  toast('<b>'+esc(copy.name)+'</b> deleted. It is in Recently deleted for 30 days.',
+        "undoDeleteFile("+jsq(JSON.stringify(copy))+")");
+}
+function undoDeleteFile(json){
+  try{var f=JSON.parse(json)}catch(e){return}
+  fileHome(f.project_id,f.group_id).unshift(f);
+  render();toast('Put back');
 }
 
 /* ---- PDF exports ----
@@ -614,7 +928,9 @@ document.addEventListener('keydown',function(e){
   if(!S)return;
   var typing=['INPUT','TEXTAREA','SELECT'].indexOf(document.activeElement.tagName)>=0||document.activeElement.isContentEditable;
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openCap();return}
-  if(e.key==='Escape'){closeOv();return}
+  if(e.key==='Escape'){if(VIEWING)closeViewer();else closeOv();return}
+  if(VIEWING&&!typing&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){
+    e.preventDefault();stepFile(e.key==='ArrowRight'?1:-1);return}
   if(typing)return;
   if(e.key==='/'){e.preventDefault();openPal();return}
   if(e.key==='?'){openKeys();return}

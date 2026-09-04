@@ -41,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     from PySide6.QtGui import QGuiApplication, QIcon
     from PySide6.QtWidgets import QApplication
 
+
     from dig.bridge import Bridge
     from dig.startup import open_state
     from dig.store import Store

@@ -115,7 +115,9 @@ class MainWindow(QMainWindow):
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, False)
         settings.setAttribute(QWebEngineSettings.WebAttribute.ScreenCaptureEnabled, False)
         settings.setAttribute(QWebEngineSettings.WebAttribute.WebGLEnabled, False)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, False)
+        # Part 6.3: PDFs are read inside Dig rather than handed to another app.
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.ShowScrollBars, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.FocusOnNavigationEnabled, True)
 

@@ -10,11 +10,16 @@ Nothing in this file opens a socket. Dig makes no network calls.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import csv
+import io
 import json
 import os
 import re
 import shutil
 import subprocess
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -33,6 +38,7 @@ from PySide6.QtWidgets import QFileDialog
 
 from dig import __app_name__, __version__, paths
 from dig.store import BlobStore, LoadResult, Store
+from dig.store.blobs import LARGE_FILE_BYTES
 
 SAVE_DEBOUNCE_MS = 300
 
@@ -115,6 +121,21 @@ def file_chip(name: str) -> str:
     if not suffix:
         return "FILE"
     return suffix[:4]
+
+
+def _unique_in_zip(name: str, used: set) -> str:
+    """Two files of the same name both get into the archive."""
+    safe = Path(name).name or "file"
+    if safe not in used:
+        used.add(safe)
+        return safe
+    stem, suffix = Path(safe).stem, Path(safe).suffix
+    counter = 2
+    while f"{stem} ({counter}){suffix}" in used:
+        counter += 1
+    picked = f"{stem} ({counter}){suffix}"
+    used.add(picked)
+    return picked
 
 
 def _inside_digs_own(path: Path) -> bool:
@@ -224,6 +245,7 @@ class Bridge(QObject):
         self._save_broken = False
         self._motion = read_reduce_motion()
         self.blobs = BlobStore(paths.blobs_dir())
+        self._blob_mimes: dict[str, str] = {}
 
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -420,6 +442,214 @@ class Bridge(QObject):
                 "stored_path": str(stored),
             }
         )
+
+
+    # ------------------------------------------------------------------ files
+
+    @Slot(str, str, result=str)
+    def pickFiles(self, project_id: str, group_id: str) -> str:
+        """Choose one or more files and keep a copy of each inside Dig."""
+        chosen, _ = QFileDialog.getOpenFileNames(
+            self._window, "Add files", str(self.documents_dir()), "All files (*)"
+        )
+        if not chosen:
+            return json.dumps({"ok": False, "reason": "cancelled"})
+        return json.dumps(self._take_in([Path(c) for c in chosen], project_id, group_id))
+
+    @Slot(str, str, str, result=str)
+    def addPaths(self, paths_json: str, project_id: str, group_id: str) -> str:
+        """Take in files that were dropped onto the window."""
+        try:
+            wanted = [Path(p) for p in json.loads(paths_json)]
+        except (TypeError, ValueError):
+            return json.dumps({"ok": False, "reason": "nothing usable was dropped"})
+        return json.dumps(self._take_in(wanted, project_id, group_id))
+
+    @Slot(str, str, str, str, result=str)
+    def addPasted(self, name: str, data_url: str, project_id: str, group_id: str) -> str:
+        """Take in something pasted from the clipboard."""
+        try:
+            head, _, payload = data_url.partition(",")
+            raw = base64.b64decode(payload) if "base64" in head else payload.encode("utf-8")
+        except (ValueError, binascii.Error):
+            return json.dumps({"ok": False, "reason": "that could not be read"})
+        if not raw:
+            return json.dumps({"ok": False, "reason": "there was nothing to paste"})
+        stored = self.blobs.put_bytes(raw, name or "Pasted file")
+        return json.dumps({"ok": True, "files": [self._file_record(stored, project_id, group_id)]})
+
+    def _take_in(self, sources: list, project_id: str, group_id: str) -> dict:
+        kept, refused, large = [], [], []
+        for source in sources:
+            if not source.is_file():
+                refused.append(source.name)
+                continue
+            try:
+                size = source.stat().st_size
+                stored = self.blobs.put(source)
+            except OSError:
+                refused.append(source.name)
+                continue
+            if size > LARGE_FILE_BYTES:
+                large.append(source.name)
+            kept.append(self._file_record(stored, project_id, group_id))
+        return {"ok": bool(kept), "files": kept, "refused": refused, "large": large}
+
+    def _file_record(self, stored, project_id: str, group_id: str) -> dict:
+        return {
+            "sha256": stored.sha256,
+            "name": stored.name,
+            "type": stored.ext,
+            "mime": stored.mime,
+            "size": stored.size,
+            "added_at": datetime.now().isoformat(timespec="seconds"),
+            "project_id": project_id or None,
+            "group_id": group_id or None,
+            "deduplicated": stored.deduplicated,
+        }
+
+    @Slot(str, str, result=str)
+    def saveCopy(self, sha256: str, name: str) -> str:
+        """Write the exact original bytes somewhere the person chooses."""
+        if not self.blobs.has(sha256):
+            return json.dumps({"ok": False, "reason": "Dig does not have those bytes."})
+        chosen, _ = QFileDialog.getSaveFileName(
+            self._window, "Save a copy", str(self.documents_dir() / (name or "file")), "All files (*)"
+        )
+        if not chosen:
+            return json.dumps({"ok": False, "reason": "cancelled"})
+        try:
+            self.blobs.copy_out(sha256, Path(chosen))
+        except OSError:
+            return json.dumps(
+                {"ok": False, "reason": "Dig could not write there. Pick another folder."}
+            )
+        return json.dumps({"ok": True, "name": Path(chosen).name})
+
+    @Slot(str, str, result=str)
+    def saveAllFiles(self, files_json: str, suggested: str) -> str:
+        """Write every file of one project or group as a zip, with a manifest."""
+        try:
+            wanted = json.loads(files_json)
+        except (TypeError, ValueError):
+            wanted = []
+        if not wanted:
+            return json.dumps({"ok": False, "reason": "There are no files to save."})
+        chosen, _ = QFileDialog.getSaveFileName(
+            self._window,
+            "Save all files",
+            str(self.documents_dir() / f"{suggested or 'files'}.zip"),
+            "Zip archive (*.zip)",
+        )
+        if not chosen:
+            return json.dumps({"ok": False, "reason": "cancelled"})
+        target = Path(chosen)
+        if target.suffix.lower() != ".zip":
+            target = target.with_suffix(".zip")
+
+        rows = [["name", "document id", "version", "size", "added", "sha256"]]
+        try:
+            with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+                used: set[str] = set()
+                for item in wanted:
+                    sha = item.get("sha256") or ""
+                    if not self.blobs.has(sha):
+                        continue
+                    name = _unique_in_zip(item.get("name") or sha, used)
+                    archive.writestr(name, self.blobs.read(sha))
+                    rows.append([
+                        name, item.get("doc_id") or "", item.get("version") or "",
+                        str(item.get("size") or 0), item.get("added_at") or "", sha,
+                    ])
+                buffer = io.StringIO()
+                csv.writer(buffer).writerows(rows)
+                archive.writestr("manifest.csv", buffer.getvalue())
+        except OSError:
+            return json.dumps(
+                {"ok": False, "reason": "Dig could not write there. Pick another folder."}
+            )
+        return json.dumps({"ok": True, "name": target.name, "count": len(rows) - 1})
+
+    @Slot(str, str, result=str)
+    def viewUrl(self, sha256: str, name: str) -> str:
+        """A file:// URL the viewer can point an img, embed, or video at."""
+        if not sha256 or not self.blobs.has(sha256):
+            return ""
+        return QUrl.fromLocalFile(str(self.blobs.view_path(sha256, name or ""))).toString()
+
+    @Slot(str, result=str)
+    def readText(self, sha256: str) -> str:
+        """The text of a text file, for the viewer. Never more than 2 MB."""
+        if not sha256 or not self.blobs.has(sha256):
+            return json.dumps({"ok": False, "reason": "Dig does not have those bytes."})
+        if self.blobs.size_of(sha256) > 2 * 1024 * 1024:
+            return json.dumps(
+                {"ok": False, "reason": "That file is too big to show here. Open it with the system app."}
+            )
+        try:
+            text = self.blobs.read(sha256).decode("utf-8", "replace")
+        except OSError:
+            return json.dumps({"ok": False, "reason": "Dig could not read that one."})
+        return json.dumps({"ok": True, "text": text})
+
+    def mime_for_blob(self, sha256: str) -> str:
+        """The type the interface recorded for these bytes, if it told us one."""
+        return self._blob_mimes.get(sha256, "")
+
+    @Slot(str, str)
+    def rememberMime(self, sha256: str, mime: str) -> None:
+        if sha256 and mime:
+            self._blob_mimes[sha256] = mime
+
+    @Slot(str, result=bool)
+    def openBlob(self, sha256: str) -> bool:
+        """Hand a file to whatever the desktop opens that kind with."""
+        if not self.blobs.has(sha256):
+            return False
+        return QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.blobs.path_for(sha256))))
+
+    @Slot(str, result=bool)
+    def revealBlob(self, sha256: str) -> bool:
+        """Open the folder the bytes are kept in."""
+        if not self.blobs.has(sha256):
+            return False
+        return QDesktopServices.openUrl(
+            QUrl.fromLocalFile(str(self.blobs.path_for(sha256).parent))
+        )
+
+    @Slot(str, result=str)
+    def storage(self, referenced_json: str) -> str:
+        """What the files are costing, and how much of it nothing points at."""
+        try:
+            referenced = set(json.loads(referenced_json) or [])
+        except (TypeError, ValueError):
+            referenced = set()
+        loose = self.blobs.unreferenced(referenced)
+        return json.dumps(
+            {
+                "total": self.blobs.total_size(),
+                "totalHuman": human_size(self.blobs.total_size()),
+                "count": len(self.blobs.every()),
+                "loose": len(loose),
+                "looseSize": sum(self.blobs.size_of(sha) for sha in loose),
+                "looseHuman": human_size(sum(self.blobs.size_of(sha) for sha in loose)),
+                "path": str(paths.blobs_dir()),
+            }
+        )
+
+    @Slot(str, result=str)
+    def cleanUp(self, referenced_json: str) -> str:
+        """Remove only blobs that nothing at all points at."""
+        try:
+            referenced = set(json.loads(referenced_json) or [])
+        except (TypeError, ValueError):
+            return json.dumps({"ok": False, "reason": "Dig could not tell what is in use."})
+        freed = 0
+        removed = 0
+        for sha in self.blobs.unreferenced(referenced):
+            freed += self.blobs.remove(sha)
+            removed += 1
+        return json.dumps({"ok": True, "removed": removed, "freed": human_size(freed)})
 
     # ------------------------------------------------------ export and import
 

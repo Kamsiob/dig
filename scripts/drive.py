@@ -78,7 +78,13 @@ def main() -> int:
 
             return pick
 
+        def many(*_a, **_kw):
+            picked = list(queued["open"])
+            queued["open"] = []
+            return (picked, "")
+
         QFileDialog.getOpenFileName = staticmethod(answer("open"))
+        QFileDialog.getOpenFileNames = staticmethod(many)
         QFileDialog.getSaveFileName = staticmethod(answer("save"))
 
     width, height = (int(n) for n in args.size.lower().split("x"))

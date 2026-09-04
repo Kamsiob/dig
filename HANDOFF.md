@@ -57,10 +57,10 @@ Phases as restructured by the addendum's Part 8.
 
 - [x] Phase 0: read, plan, checkpoint
 - [x] Phase 1: shell and bridge (single document storage)
-- [ ] Phase 1R: Part 5A per record model with oplog, Part 6 blob store
+- [x] Phase 1R: Part 5A per record model with oplog, Part 6 blob store
 - [x] Phase 2: move the prototype in
 - [x] Phase 3: native pieces (basic files, export, import, PDF)
-- [ ] Phase 3R: the full Part 6 file pipeline
+- [x] Phase 3R: the full Part 6 file pipeline
 - [x] Phase 4: setup defaults and v1 migration
 - [ ] Phase 4.5: the Part 7 feature set
 - [x] Phase 5: desktop integration
@@ -160,6 +160,26 @@ system underneath it.
    Reload menu inside a desktop app is wrong.
 
 ## Current state
+
+Parts 5A and 6 of the addendum are in, and every defect the adversarial review
+confirmed is fixed. 107 tests green.
+
+Files are first class: a picker that takes several at once, drag and drop onto a
+project, a group page, or the Library, paste from the clipboard, deduplication by
+SHA256, replace-as-a-version or keep-both when a name clashes, and a viewer that
+reads images, PDFs, text with line numbers, Markdown either way, CSV as a table,
+audio and video, and says so plainly for anything else. Save a copy writes the
+exact original bytes; Save all files writes a zip with a manifest.csv carrying
+name, document id, version, size, date, and hash.
+
+**How the viewer reaches the bytes.** A custom `dig://` URL scheme was built
+first and abandoned: QtWebEngine will not let a `file://` page fetch or even
+`<img>` a custom scheme, and there is no way to attach the CORS headers that
+would be needed. Instead the bridge hands the page a `file://` path into
+`blobs/.views/<sha><ext>`, a hard link to the same bytes carrying the real
+extension, which is what lets the built in PDF viewer and the media elements
+know what they have been given. Text files come through `readText` instead, so
+no fetch is involved at all. `.views` never counts as a blob.
 
 Phase 5 complete. The app has an icon, a launcher, and an About dialog.
 

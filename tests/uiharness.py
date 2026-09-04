@@ -183,10 +183,15 @@ class UI:
         def open_dialog(*_a, **_kw):
             return (harness.opens.pop(0) if harness.opens else "", "")
 
+        def open_many(*_a, **_kw):
+            picked, harness.opens = list(harness.opens), []
+            return (picked, "")
+
         def save_dialog(*_a, **_kw):
             return (harness.saves.pop(0) if harness.saves else "", "")
 
         QFileDialog.getOpenFileName = staticmethod(open_dialog)
+        QFileDialog.getOpenFileNames = staticmethod(open_many)
         QFileDialog.getSaveFileName = staticmethod(save_dialog)
 
 

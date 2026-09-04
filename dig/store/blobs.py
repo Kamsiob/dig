@@ -123,6 +123,36 @@ class BlobStore:
     def read(self, sha256: str) -> bytes:
         return self.path_for(sha256).read_bytes()
 
+    def view_path(self, sha256: str, name: str) -> Path:
+        """A path to the same bytes that carries the file's real extension.
+
+        The store keeps a file under its hash, which has no extension, and a
+        browser engine decides what to do with a file by its extension. This
+        gives the viewer a name it can read, as a hard link where the
+        filesystem allows one and a copy where it does not, so the bytes are
+        still stored exactly once.
+        """
+        suffix = Path(name).suffix.lower()[:12]
+        views = self.root / ".views"
+        views.mkdir(parents=True, exist_ok=True)
+        target = views / f"{sha256}{suffix}"
+        if target.exists():
+            return target
+        source = self.path_for(sha256)
+        if not source.is_file():
+            return target
+        try:
+            os.link(source, target)
+        except OSError:
+            shutil.copyfile(source, target)
+        return target
+
+    def clear_views(self) -> None:
+        views = self.root / ".views"
+        if views.is_dir():
+            for path in views.iterdir():
+                path.unlink(missing_ok=True)
+
     def copy_out(self, sha256: str, target: Path) -> Path:
         """Write the exact original bytes somewhere the person chose."""
         target = Path(target)
@@ -131,24 +161,27 @@ class BlobStore:
         return target
 
     def every(self) -> list[str]:
+        """Every blob, by hash. The viewer's named links are not blobs."""
         if not self.root.is_dir():
             return []
         found = []
         for path in self.root.rglob("*"):
-            if path.is_file() and not path.name.startswith("."):
+            if path.is_file() and ".views" not in path.parts and len(path.name) == 64:
                 found.append(path.name)
         return found
 
     def total_size(self) -> int:
-        if not self.root.is_dir():
-            return 0
-        return sum(p.stat().st_size for p in self.root.rglob("*") if p.is_file())
+        return sum(self.size_of(sha) for sha in self.every())
 
     def unreferenced(self, referenced: set[str]) -> list[str]:
         return [sha for sha in self.every() if sha not in referenced]
 
     def remove(self, sha256: str) -> int:
         """Delete one blob. Only ever called for a blob nothing points at."""
+        views = self.root / ".views"
+        if views.is_dir():
+            for stale in views.glob(f"{sha256}*"):
+                stale.unlink(missing_ok=True)
         path = self.path_for(sha256)
         if not path.is_file():
             return 0
