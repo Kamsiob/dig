@@ -13,7 +13,7 @@ APP_DIR_NAME = "dig"
 
 
 def _xdg_data_home() -> Path:
-    """The XDG data root, honouring XDG_DATA_HOME when it is set."""
+    """The XDG data root, honoring XDG_DATA_HOME when it is set."""
     env = os.environ.get("XDG_DATA_HOME", "").strip()
     if env:
         return Path(env).expanduser()
@@ -26,8 +26,18 @@ def data_dir() -> Path:
 
 
 def db_path() -> Path:
-    """The SQLite database file."""
+    """The SQLite file holding the whole state document."""
     return data_dir() / "dig.db"
+
+
+def v1_backup_path() -> Path:
+    """Where a migrated Dig v1 database is kept, untouched, forever."""
+    return data_dir() / "dig-v1.db.bak"
+
+
+def history_dir() -> Path:
+    """Rolling recovery snapshots, newest twenty kept."""
+    return data_dir() / "history"
 
 
 def attachments_dir() -> Path:
@@ -35,15 +45,16 @@ def attachments_dir() -> Path:
     return data_dir() / "attachments"
 
 
-def app_attachments_dir(app_id: int) -> Path:
-    """The managed attachment folder for one app."""
-    return attachments_dir() / str(app_id)
+def project_attachments_dir(project_id: str) -> Path:
+    """The managed attachment folder for one project."""
+    return attachments_dir() / str(project_id)
 
 
 def ensure_data_dirs() -> Path:
     """Create the data directories on first run. Returns the data folder."""
     root = data_dir()
     root.mkdir(parents=True, exist_ok=True)
+    history_dir().mkdir(parents=True, exist_ok=True)
     attachments_dir().mkdir(parents=True, exist_ok=True)
     return root
 
@@ -53,11 +64,11 @@ def package_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
+def ui_dir() -> Path:
+    """The web interface: index.html, app.css, app.js, and the fonts."""
+    return package_dir() / "ui"
+
+
 def project_root() -> Path:
-    """The repository / install root that holds `fonts/` and `assets/`."""
+    """The repository or install root that holds `assets/` and `packaging/`."""
     return package_dir().parent
-
-
-def fonts_dir() -> Path:
-    """Bundled OFL font files."""
-    return project_root() / "fonts"

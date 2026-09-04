@@ -1,8 +1,5 @@
 # Development and test dependencies for Dig. Not required to run the app.
 -r requirements.txt
 
-pytest==8.4.2
+pytest==9.1.1
 pytest-qt==4.5.0
-
-# Build-time only: cuts the static font instances in scripts/build_fonts.py.
-fonttools==4.60.1

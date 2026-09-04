@@ -1,8 +1,9 @@
-"""Dig by Kamsiob — a place to bury ideas and dig them back up.
+"""Dig by Kamsiob. Every project you are working on, in one place.
 
-Local-first. Nothing leaves this machine.
+Local only. Nothing leaves this machine and no network call is ever made.
 """
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __app_name__ = "Dig"
 __author__ = "Kamsiob"
+__desktop_file__ = "dig"

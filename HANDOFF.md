@@ -42,7 +42,7 @@ whole state as a single JSON document. Zero network requests, ever.
 Phases are defined in `docs/handoff-v2/BUILD_PLAN.md`. Do not merge or skip them.
 
 - [x] Phase 0: read, plan, checkpoint
-- [ ] Phase 1: shell and bridge
+- [x] Phase 1: shell and bridge
 - [ ] Phase 2: move the prototype in
 - [ ] Phase 3: native pieces
 - [ ] Phase 4: setup defaults and migration
@@ -90,10 +90,34 @@ system underneath it.
    kept as well, so both routes work.
 8. **Grid mode is removed with the prototype bar.** The Screen grid button is part
    of the prototype bar, so `renderGrid`, `setMode`, and `resetAll` go with it.
+9. **`pickFile` takes the project it is filing into.** SPEC writes the slot as
+   `pickFile(filter)`, but SPEC's own storage rule puts attachments under
+   `attachments/{project_id}/`, so the slot cannot know where to copy without
+   being told. The signature is `pickFile(projectId, fileFilter)`.
+10. **Python owns `ui.window`.** The interface cannot know where its window sits
+   on the desktop, so the bridge stamps the geometry into the document on the way
+   to disk. Nothing in the interface has to think about it.
+11. **The web view is hard-wired to this computer.** A URL request interceptor
+   refuses every scheme except file, qrc, data, blob, and about, so "no network
+   calls" is enforced rather than merely intended. Navigation away from the one
+   local document is refused and handed to `openUrl` instead. The context menu is
+   cut down to Cut, Copy, Paste, and Select all, because a browser's Back and
+   Reload menu inside a desktop app is wrong.
 
 ## Current state
 
-Phase 0 complete. The handoff is committed under `docs/handoff-v2/`.
+Phase 1 complete. The v1 application code is gone; the v2 skeleton is in place:
+`dig/paths.py`, `dig/storage.py`, `dig/bridge.py`, `dig/window.py`, `dig/app.py`,
+a placeholder `dig/ui/index.html` that Phase 2 replaces, and the vendored
+`dig/ui/qwebchannel.js` (Qt, LGPLv3, compatible with AGPLv3). 17 storage tests
+pass. A smoke run confirms the page loads, calls `bridge.load()`, calls
+`bridge.save()`, and the state lands in SQLite with a history snapshot.
+
+Development environment: `.venv` created with `--system-site-packages` so it
+picks up the system PySide6 6.11.1 rather than downloading a second copy.
+Run tests with `./.venv/bin/python -m pytest tests/ -q`.
+
+The handoff is committed under `docs/handoff-v2/`.
 `docs/V2_MIGRATION.md` describes how v1 data becomes v2 data.
 
 There is real v1 data on this machine at `~/.local/share/dig/dig.db`: one app

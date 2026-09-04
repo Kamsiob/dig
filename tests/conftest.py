@@ -1,8 +1,7 @@
-"""Shared test fixtures. Every test runs against a throwaway data folder."""
+"""Shared fixtures. Every test runs against a throwaway data folder."""
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -10,36 +9,17 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# Qt tests run without a display. Set before any Qt import.
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-from dig.storage import Store  # noqa: E402
+from dig.storage import StateStore  # noqa: E402
 
 
-@pytest.fixture
+@pytest.fixture()
 def data_dir(tmp_path: Path) -> Path:
-    """An empty stand-in for ~/.local/share/dig."""
-    return tmp_path / "dig-data"
+    root = tmp_path / "dig"
+    (root / "history").mkdir(parents=True)
+    (root / "attachments").mkdir(parents=True)
+    return root
 
 
-@pytest.fixture
-def store(data_dir: Path):
-    """An open store on a fresh database."""
-    s = Store(db_file=data_dir / "dig.db", attachments_root=data_dir / "attachments")
-    s.open()
-    yield s
-    s.close()
-
-
-@pytest.fixture
-def sample_file(tmp_path: Path):
-    """Builds a real file on disk to attach."""
-
-    def _make(name: str, content: bytes = b"dig test payload") -> Path:
-        folder = tmp_path / "sources"
-        folder.mkdir(exist_ok=True)
-        path = folder / name
-        path.write_bytes(content)
-        return path
-
-    return _make
+@pytest.fixture()
+def store(data_dir: Path) -> StateStore:
+    return StateStore(data_dir / "dig.db", data_dir / "history")
