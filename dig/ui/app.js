@@ -169,6 +169,7 @@ function start(){
       VERSION=opening.version||'';
       setMotion(opening.reduceMotion);
       S=adopt(opening.state);
+      if(BRIDGE.tookDocument)BRIDGE.tookDocument(opening.cursor||0);
       pickResurf();
       READY=true;
       applyTextSize();
@@ -224,8 +225,18 @@ function hzLabel(w){var h=HZ.find(function(x){return x[0]===(w||'later')});retur
 function render(){
   document.documentElement.setAttribute('data-theme',S.theme==='system'?SYS_THEME:S.theme);
   var app=document.getElementById('app');
+  /* Anything open is kept as it stands rather than drawn again. Drawing it
+     again would replace the elements a person is typing into, and everything
+     they had typed would go with them. Whatever is behind it is redrawn as
+     usual. */
+  var open=app.querySelector('.overlay.open');
+  var keep=open?[].slice.call(app.querySelectorAll('.overlay')):null;
   app.className='app';
-  app.innerHTML=renderSide()+'<main class="main" id="main">'+renderView(S.view)+'</main>'+renderOverlays()+'<div class="drop-veil" id="drop-veil"><div class="card"><b>Drop to keep a copy</b><span>Dig keeps its own copy. Your file is not moved.</span></div></div><div class="toasts" id="toasts"></div>';
+  app.innerHTML=renderSide()+'<main class="main" id="main">'+renderView(S.view)+'</main>'+(keep?'':renderOverlays())+'<div class="drop-veil" id="drop-veil"><div class="card"><b>Drop to keep a copy</b><span>Dig keeps its own copy. Your file is not moved.</span></div></div><div class="toasts" id="toasts"></div>';
+  if(keep){
+    var veil=document.getElementById('drop-veil');
+    keep.forEach(function(o){app.insertBefore(o,veil)});
+  }
   renderToasts();
   wireA11y();
   applyTextSize();
@@ -955,13 +966,23 @@ function dismissConflicts(){
   BRIDGE.syncConflictsSeen(JSON.stringify(CONFLICTS.map(function(c){return c.id})),function(){
     CONFLICTS=[];render();toast('Cleared')});
 }
+/* Something arriving from another device redraws the window, and redrawing the
+   window empties whatever dialog is open along with anything typed into it. So
+   if you are in the middle of something, it waits until you have closed it. */
+var WAITING_TO_RELOAD=false;
+function somethingIsOpen(){return !!document.querySelector('.overlay.open')}
 function reloadFromDisk(){
   if(!BRIDGE)return;
+  if(somethingIsOpen()){WAITING_TO_RELOAD=true;return}
+  /* Hand over anything still being held before reading the disk back, or a
+     change made a moment ago would be read over by what was there before it. */
+  flushSave();
   BRIDGE.reload(function(json){
     var r=JSON.parse(json);
     if(!r.ok||!r.state)return;
     var where=S.view,which=S.projectId,tab=S.ptab;
     S=adopt(r.state);S.view=where;S.projectId=which;S.ptab=tab;
+    if(BRIDGE.tookDocument)BRIDGE.tookDocument(r.cursor||0);
     render();toast('Something arrived from another device.');
     loadConflicts();
   });
@@ -1372,7 +1393,10 @@ function renderOverlays(){
 }
 function dlg(html){document.getElementById('dlg-body').innerHTML=html;document.getElementById('ov-dlg').classList.add('open');wireA11y();var f=document.querySelector('#dlg-body input[type=text],#dlg-body textarea,#dlg-body select');if(f)setTimeout(function(){f.focus()},10);
   if(VIEWING&&document.getElementById('viewer-stage')){var v=fileById(VIEWING);if(v)setTimeout(function(){fillViewer(v)},0)}}
-function closeOv(){document.querySelectorAll('.overlay').forEach(function(o){o.classList.remove('open')})}
+function closeOv(){
+  document.querySelectorAll('.overlay').forEach(function(o){o.classList.remove('open')});
+  if(WAITING_TO_RELOAD){WAITING_TO_RELOAD=false;setTimeout(reloadFromDisk,0)}
+}
 function openKeys(){dlg('<div class="dh2"><h3>Keyboard shortcuts</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="keys"><div><span>Add something</span><kbd>Ctrl K</kbd></div><div><span>Find anything</span><kbd>/</kbd></div><div><span>Home</span><kbd>1</kbd></div><div><span>Projects</span><kbd>2</kbd></div><div><span>Roadmap</span><kbd>3</kbd></div><div><span>Ideas</span><kbd>4</kbd></div><div><span>Library</span><kbd>5</kbd></div><div><span>Your review</span><kbd>6</kbd></div><div><span>Close anything</span><kbd>Esc</kbd></div><div><span>This card</span><kbd>?</kbd></div></div></div><div class="foot"><button class="btn p" onclick="closeOv()">Got it</button></div>')}
 
 /* ======================= ACTIONS ======================= */

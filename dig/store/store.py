@@ -29,6 +29,20 @@ TOMBSTONE_DAYS = 90
 HISTORY_KEEP = 20
 
 
+_COLUMNS: dict[str, frozenset] = {}
+
+
+def columns_of(conn: sqlite3.Connection, table: str) -> frozenset:
+    """What that table actually holds. Read once, then remembered."""
+    known = _COLUMNS.get(table)
+    if known is None:
+        known = frozenset(
+            row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        )
+        _COLUMNS[table] = known
+    return known
+
+
 @dataclass
 class LoadResult:
     state: dict | None
@@ -124,6 +138,14 @@ class Store:
         at = at or now_iso()
         values = dict(values or {})
         values.pop("id", None)
+        # Column names go into the statement itself, and a paired device is the
+        # one thing that can put a name here that this computer did not choose.
+        # Anything that is not a real column of this table is dropped rather
+        # than trusted.
+        allowed = columns_of(conn, collection)
+        unknown = [key for key in values if key not in allowed]
+        for key in unknown:
+            values.pop(key)
 
         existing = conn.execute(
             f"SELECT rev, created_at FROM {collection} WHERE id = ?", (record_id,)
@@ -241,8 +263,15 @@ class Store:
 
     # ------------------------------------------------------------------ write
 
-    def save_state(self, state: dict) -> dict:
+    def save_state(self, state: dict, known_cursor: int = 0) -> dict:
         """Work out what changed in the document and put each change through `write`.
+
+        `known_cursor` is how far the oplog had got when the document being
+        saved was read out of here. A record another device wrote after that
+        point is one this document has never seen, so its absence means nothing
+        and it is left alone. Without that, the first save after a sync would
+        delete everything that had just arrived. The cursor is used rather than
+        a time because the other device's clock is not ours to trust.
 
         Returns a small summary of what was written, which the tests read.
         """
@@ -250,9 +279,17 @@ class Store:
             raise RuntimeError("This data file was written by a newer Dig.")
         conn = self.connect()
         wanted, settings = records.flatten(state)
-        summary = {"created": 0, "updated": 0, "deleted": 0}
+        summary = {"created": 0, "updated": 0, "deleted": 0, "kept": 0}
         at = now_iso()
         device = self.device_id
+
+        arrived = {
+            (row["collection"], row["record_id"])
+            for row in conn.execute(
+                "SELECT collection, record_id FROM oplog"
+                " WHERE seq > ? AND device != ?", (known_cursor, device)
+            ).fetchall()
+        }
 
         with conn:
             current = self._read_rows(conn, include_deleted=True)
@@ -271,9 +308,13 @@ class Store:
                         summary["updated"] += 1
 
                 for record_id, row in have.items():
-                    if record_id not in want and not row.get("deleted"):
-                        self.write(conn, collection, record_id, "delete", None, device, at)
-                        summary["deleted"] += 1
+                    if record_id in want or row.get("deleted"):
+                        continue
+                    if (collection, record_id) in arrived:
+                        summary["kept"] += 1
+                        continue
+                    self.write(conn, collection, record_id, "delete", None, device, at)
+                    summary["deleted"] += 1
 
             for key, value in settings.items():
                 self._write_setting(conn, key, value, device, at)

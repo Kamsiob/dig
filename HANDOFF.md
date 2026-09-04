@@ -372,6 +372,42 @@ public until one of those is done.
    goes through the web engine's own zoom, with a CSS fallback when there is no
    bridge. See decision 24.
 
+## Phase 8, the scripted user pass
+
+`scripts/userpass.py` uses the app the way a person would, on a fresh profile,
+through all sixteen steps BUILD_PLAN lists and the fourteen the addendum adds.
+It drives the window a person launches, not a stand in for it, and it records
+every failure rather than stopping at the first, because a pass that halts on
+the first defect hides the nine behind it. 262 things checked.
+
+Run it with `./.venv/bin/python scripts/userpass.py --data /tmp/pass`.
+
+### Defects it found, and what was done
+
+1. **The Share button on a group page shared every project.** Found in Phase 6
+   and fixed there. See above.
+2. **A change arriving from another device emptied whatever dialog was open.**
+   Redrawing the window replaces every element in it, including the box being
+   typed into, so a sync landing mid sentence took the sentence with it.
+   `render` now leaves an open dialog exactly where it is and redraws only what
+   is behind it, and a change arriving while something is open waits until it
+   is closed.
+3. **A field name from another device went straight into the statement.**
+   `Store.write` built its SQL from the keys of whatever it was handed, and a
+   paired device is the one thing that can choose those keys. A push carrying a
+   field called `group` produced a syntax error that was swallowed as "ignored";
+   a field named to close the statement would have been worse. Unknown columns
+   are now dropped before anything is built.
+4. **The first local save after a sync deleted everything that had arrived.**
+   The interface saves the whole document, so anything missing from it reads as
+   deleted. A record another device wrote a moment ago is missing because the
+   interface has never seen it. `save_state` now takes the oplog cursor the
+   document was read at, and leaves alone anything another device wrote after
+   it. The cursor rather than a timestamp, because the other device's clock is
+   not ours to trust, and stamped when the interface says it has taken the
+   document rather than when Python handed it over, because there is a moment
+   between the two in which the old document is still the live one.
+
 ## Known defects to fix in Phase 8
 
 Both are inherited from the prototype and both will bite real data, so they are

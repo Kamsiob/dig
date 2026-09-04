@@ -119,7 +119,7 @@ def test_saving_the_same_document_twice_writes_nothing(store: Store) -> None:
     store.save_state(SAMPLE)
     before = len(oplog(store))
     again = store.save_state(store.load().state)
-    assert again == {"created": 0, "updated": 0, "deleted": 0}
+    assert again == {"created": 0, "updated": 0, "deleted": 0, "kept": 0}
     assert len(oplog(store)) == before
 
 
@@ -128,7 +128,9 @@ def test_one_edit_writes_exactly_one_change(store: Store) -> None:
     before = len(oplog(store))
     state = store.load().state
     state["projects"][0]["next"] = "Something else"
-    assert store.save_state(state) == {"created": 0, "updated": 1, "deleted": 0}
+    assert store.save_state(state) == {
+        "created": 0, "updated": 1, "deleted": 0, "kept": 0
+    }
     assert len(oplog(store)) == before + 1
     assert store.load().state["projects"][0]["next"] == "Something else"
 

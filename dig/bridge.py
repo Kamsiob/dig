@@ -266,6 +266,13 @@ class Bridge(QObject):
         self._store = store
         self._window = window
         self._pending: str | None = None
+        # How far the oplog had got when the interface was handed its document.
+        # Anything another device wrote after this the interface has never seen,
+        # so a save of that document must not read as having deleted it. Only a
+        # load or a reload moves this, because only those two hand the interface
+        # a document.
+        self._document_cursor = 0
+        self._pending_cursor = 0
         self._first_load: LoadResult | None = None
         self._pdf_pages: list = []
         self._pdf_prof = None
@@ -312,22 +319,41 @@ class Bridge(QObject):
 
     def _flush(self) -> None:
         payload, self._pending = self._pending, None
+        cursor = self._pending_cursor
         if payload is None:
             return
         try:
-            self._store.save_state(json.loads(self._with_geometry(payload)))
+            self._store.save_state(json.loads(self._with_geometry(payload)), cursor)
             if self._save_broken:
                 self._save_broken = False
                 self.saveFailed.emit("")
         except Exception as exc:  # a failed save must never take the app down
             print(f"{__app_name__}: could not save: {exc}", flush=True)
             self._pending = payload  # hold it; the next attempt may get through
+            self._pending_cursor = cursor
             if not self._save_broken:
                 self._save_broken = True
                 self.saveFailed.emit(
                     "Dig is not able to write to "
                     f"{paths.db_path()}. Your changes are only in this window."
                 )
+
+    @Slot(int)
+    def tookDocument(self, cursor: int) -> None:
+        """The interface says it is now holding the document read at this point.
+
+        It has to say so itself. Stamping this when the document was handed
+        over would leave a window in which the interface still holds the old
+        one and a save of it would read as having deleted whatever arrived in
+        between.
+        """
+        self._document_cursor = int(cursor or 0)
+
+    def _cursor_now(self) -> int:
+        try:
+            return int(self._store.meta().get("cursor") or 0)
+        except Exception:
+            return 0
 
     def _with_geometry(self, payload: str) -> str:
         """Stamp the window's size and place into the document as it is written.
@@ -363,6 +389,7 @@ class Bridge(QObject):
         return json.dumps(
             {
                 "state": result.state,
+                "cursor": self._cursor_now(),
                 "notice": result.notice,
                 "recovered": result.recovered,
                 "theme": self.theme(),
@@ -376,8 +403,14 @@ class Bridge(QObject):
 
     @Slot(str)
     def save(self, payload: str) -> None:
-        """Hold the newest document and write it at most every 300 ms."""
+        """Hold the newest document and write it at most every 300 ms.
+
+        The cursor is taken now, not when it is written, because that is what
+        this document knows. A change arriving from another device in between
+        would otherwise look like something this document had deleted.
+        """
         self._pending = payload
+        self._pending_cursor = self._document_cursor
         if not self._timer.isActive():
             self._timer.start()
 
@@ -750,11 +783,20 @@ class Bridge(QObject):
 
     @Slot(result=str)
     def reload(self) -> str:
-        """The document as it is on disk right now, after a sync brought things in."""
+        """The document as it is on disk right now, after a sync brought things in.
+
+        Anything still waiting to be written goes down first. Without that, a
+        change made a moment ago would be read over by the version that was on
+        disk before it.
+        """
+        self.flush()
         try:
-            return json.dumps({"ok": True, "state": self._store.load().state}, default=str)
+            state = self._store.load().state
         except Exception:
             return json.dumps({"ok": False, "reason": "Dig could not read it back."})
+        return json.dumps(
+            {"ok": True, "state": state, "cursor": self._cursor_now()}, default=str
+        )
 
     # --------------------------------------------------- backup and restore
 

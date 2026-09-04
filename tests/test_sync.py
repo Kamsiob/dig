@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from dig.store import BlobStore, Store
+from dig.store.store import now_iso
 from dig.store.schema import SCHEMA_VERSION
 from dig.sync import protocol
 from dig.sync.server import SyncServer, tailscale_addresses
@@ -416,3 +417,102 @@ def test_the_pairing_payload_is_what_the_qr_holds(server) -> None:
     assert payload["code"] == made["code"]
     assert payload["port"] == running.port
     assert payload["address"].startswith("100."), "the tailnet address, not the local one"
+
+
+def test_a_change_arriving_does_not_empty_an_open_dialog(ui) -> None:
+    """Redrawing the window empties every dialog in it, so a change that turns
+    up while you are typing has to wait until you have closed what you are in."""
+    ui.run("S.org='Riverbank';S.setupWork.apps=true;obGo(4);obFinish();", settle=600)
+    ui.run("openCap();document.getElementById('cap-in').value='Half a thought';",
+           settle=300)
+
+    ui.run("reloadFromDisk();", settle=600)
+    assert ui.count("#ov-cap.open") == 1, "the dialog was closed under the person"
+    assert ui.js("document.getElementById('cap-in').value") == "Half a thought", (
+        "what was typed disappeared"
+    )
+    assert ui.js("WAITING_TO_RELOAD") is True
+
+    ui.run("doCapture();", settle=800)
+    assert ui.js("WAITING_TO_RELOAD") is False, "the held change was never brought in"
+    assert any(i["text"] == "Half a thought" for i in ui.js("S.ideas")), (
+        "the thought was lost on the way"
+    )
+
+
+def test_a_redraw_leaves_an_open_dialog_where_it_is(ui) -> None:
+    """Anything that redraws the window while a dialog is open would otherwise
+    replace the box a person is typing into, and take what they typed with it."""
+    ui.run("S.org='Riverbank';S.setupWork.apps=true;obGo(4);obFinish();", settle=600)
+    ui.run("openCap();document.getElementById('cap-in').value='Mid sentence';",
+           settle=300)
+
+    ui.run("render();", settle=400)
+    assert ui.count("#ov-cap.open") == 1, "the redraw closed the dialog"
+    assert ui.js("document.getElementById('cap-in').value") == "Mid sentence"
+
+    order = ui.js("Array.prototype.map.call(document.getElementById('app').children,"
+                  "function(e){return e.id||e.className})")
+    assert order.index("ov-dlg") < order.index("drop-veil"), (
+        "the overlays came back in the wrong place"
+    )
+
+    ui.run("closeOv();render();", settle=400)
+    assert ui.count("#ov-cap.open") == 0
+
+
+def test_a_field_this_computer_does_not_know_is_dropped(store) -> None:
+    """Column names go into the statement itself, and a paired device is the
+    one thing that can put a name there this computer did not choose."""
+    conn = store.connect()
+    with conn:
+        store.write(conn, "ideas", "one", "create",
+                    {"text": "Real", "group": "", "desc": "", "nonsense": 1})
+    row = conn.execute("SELECT * FROM ideas WHERE id = 'one'").fetchone()
+    assert row["text"] == "Real", "the record was written without the unknown fields"
+    assert "group" not in row.keys() and "nonsense" not in row.keys()
+
+
+def test_a_field_name_cannot_carry_sql(store) -> None:
+    conn = store.connect()
+    with conn:
+        store.write(conn, "ideas", "two", "create",
+                    {"text": "Still here", "x = 1, text": "smuggled"})
+    row = conn.execute("SELECT * FROM ideas WHERE id = 'two'").fetchone()
+    assert row["text"] == "Still here"
+    assert conn.execute("SELECT count(*) FROM ideas").fetchone()[0] >= 1
+
+
+def test_a_local_save_does_not_delete_what_just_arrived(store) -> None:
+    """The interface saves the whole document, so anything not in it is taken
+    to have been deleted. Something another device wrote a moment ago is not in
+    it because the interface has never seen it, not because it went away."""
+    store.save_state({"ideas": [{"id": "mine", "text": "Mine"}]})
+    handed_out = int(store.meta()["cursor"])
+
+    conn = store.connect()
+    with conn:
+        # Dated in the past on purpose: the other device's clock is not ours to
+        # trust, so this cannot rest on the timestamp being newer.
+        store.write(conn, "ideas", "theirs", "create", {"text": "Theirs"},
+                    "another-device", "2019-01-01T00:00:00.000000")
+
+    # The interface saves the document it was holding, which knows nothing
+    # about the idea that arrived while it was open.
+    summary = store.save_state({"ideas": [{"id": "mine", "text": "Mine"}]}, handed_out)
+    assert summary["kept"] == 1, "the arriving idea was not kept"
+
+    alive = {r["id"] for r in store.connect().execute(
+        "SELECT id FROM ideas WHERE deleted = 0").fetchall()}
+    assert alive == {"mine", "theirs"}
+
+
+def test_deleting_something_that_came_from_elsewhere_still_works(store) -> None:
+    """The rule above must not make records from another device undeletable."""
+    conn = store.connect()
+    with conn:
+        store.write(conn, "ideas", "theirs", "create", {"text": "Theirs"},
+                    "another-device", "2020-01-01T00:00:00.000000")
+    store.save_state({"ideas": []}, int(store.meta()["cursor"]))
+    row = store.connect().execute("SELECT deleted FROM ideas WHERE id='theirs'").fetchone()
+    assert row["deleted"] == 1, "a record from another device could not be deleted here"

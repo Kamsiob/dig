@@ -61,6 +61,17 @@ class Pass:
     def toasts(self): return self.ui.toasts()
 
 
+def every_hash(document: dict) -> list:
+    """Every file the document points at, wherever it is kept."""
+    out = []
+    for project in document.get("projects") or []:
+        out += [f.get("sha256") for f in (project.get("files") or [])]
+    for group in document.get("groups") or []:
+        out += [f.get("sha256") for f in (group.get("files") or [])]
+    out += [f.get("sha256") for f in (document.get("libraryFiles") or [])]
+    return sorted(x for x in out if x)
+
+
 def console_is_clean(p: Pass) -> None:
     noise = [m for m in p.ui.console if "Uncaught" in m or "TypeError" in m
              or "not defined" in m or "null" in m.lower()]
@@ -188,27 +199,30 @@ def step_4_projects_and_stages(p: Pass) -> None:
     p.run(f"Pr({pid!r}).next='Write the spec';render();scheduleSave();")
     p.same(p.js(f"Pr({pid!r}).next"), "Write the spec", "the next step did not save")
 
-    p.run(f"addItem({pid!r},'Write the spec');", settle=250)
+    tid = p.js(f"Pr({pid!r}).type")
+    stage = p.js(f"T({tid!r}).stages[Pr({pid!r}).stage]")
+    p.run(f"addExp({tid!r},{stage!r},'Write the spec');", settle=300)
     p.run(f"openAdvance({pid!r});", settle=350)
     body = p.ui.html("#dlg-body")
-    p.check("not ticked" in body.lower() or "unmet" in body.lower()
-            or "still" in body.lower(), "moving on with an unticked item said nothing")
+    p.check("aren't done yet" in body, "moving on with an unticked item said nothing")
+    p.check("Write the spec" in body, "the warning does not name what is unticked")
     stage_before = p.js(f"Pr({pid!r}).stage")
     p.run(f"doAdvance({pid!r});", settle=400)
     p.check(p.js(f"Pr({pid!r}).stage") == stage_before + 1, "the project did not move on")
 
     activity_before = len(p.js("S.activity"))
     p.run(f"openAdvance({pid!r});doAdvance({pid!r});", settle=400)
-    p.run("undoAdvance();", settle=400)
+    p.run(f"undoAdvance({pid!r});", settle=400)
     p.same(p.js(f"Pr({pid!r}).stage"), stage_before + 1, "undo did not put the stage back")
-    p.same(len(p.js("S.activity")), activity_before + 1,
+    p.same(len(p.js("S.activity")), activity_before,
            "undo removed the wrong number of activity lines")
     console_is_clean(p)
 
 
 def step_5_waiting(p: Pass) -> None:
     p.at("5. Two waiting, one resolved, and everywhere it shows")
-    a, b = p.js("S.projects[0].id"), p.js("S.projects[1].id")
+    a = p.js("S.projects.find(function(x){return x.name==='Ledger'}).id")
+    b = p.js("S.projects.find(function(x){return x.name==='Kitchen'}).id")
     for pid, what in ((a, "the signed agreement"), (b, "the font license")):
         p.run(f"openWait({pid!r});document.getElementById('w-what').value={what!r};"
               f"setWait({pid!r});", settle=350)
@@ -246,14 +260,16 @@ def step_6_decisions(p: Pass) -> None:
     p.check(p.js(f"Pr({a!r}).decisions.find(function(d){{return d.no==={first}}}).superseded"),
             "the replaced decision is not marked as replaced")
     p.run(f"openP({a!r});S.ptab='rec';render();")
-    p.check("replaced" in p.html().lower() or "supersed" in p.html().lower(),
-            "the record does not say a decision was replaced")
+    p.check("replaces" in p.html().lower(),
+            "the record does not say which decision was replaced")
+    p.check("dec sup" in p.html() or "sup" in p.html(),
+            "the replaced decision is not crossed out")
     console_is_clean(p)
 
 
 def step_7_releases(p: Pass) -> None:
     p.at("7. Two releases, on the project roadmap and in the review")
-    pid = p.js("S.projects[0].id")
+    pid = p.js("S.projects.find(function(x){return x.name==='Ledger'}).id")
     for version, note in (("1.0", "First cut"), ("1.1", "Faster export")):
         p.run(f"addRelease({pid!r});document.getElementById('rv').value={version!r};"
               f"document.getElementById('rn').value={note!r};doRelease({pid!r});", settle=350)
@@ -267,7 +283,7 @@ def step_7_releases(p: Pass) -> None:
 
 def step_8_people_links_files(p: Pass, sample: Path) -> None:
     p.at("8. People, links, and files including a name collision")
-    pid = p.js("S.projects[0].id")
+    pid = p.js("S.projects.find(function(x){return x.name==='Ledger'}).id")
     p.run(f"addPerson({pid!r});document.getElementById('pn').value='Robin';"
           f"document.getElementById('pr').value='reviewer';"
           f"document.querySelector('#dlg-body .foot .btn.p').click();", settle=350)
@@ -279,7 +295,7 @@ def step_8_people_links_files(p: Pass, sample: Path) -> None:
 
     p.ui.queue_open(str(sample))
     p.run(f"addFiles({pid!r},'');", settle=900)
-    p.same(len(p.js("S.files")), 1, "the first file did not arrive")
+    p.same(p.js("allFiles().length"), 1, "the first file did not arrive")
 
     other = sample.parent / "second" / sample.name
     other.parent.mkdir(exist_ok=True)
@@ -288,13 +304,12 @@ def step_8_people_links_files(p: Pass, sample: Path) -> None:
     p.run(f"addFiles({pid!r},'');", settle=1200)
     if p.count("#ov-dlg.open") == 1 and "already" in p.ui.html("#dlg-body").lower():
         p.run("resolveClash('keep');", settle=800)
-    p.same(len(p.js("S.files")), 2,
+    p.same(p.js("allFiles().length"), 2,
            "the same name with different bytes did not become two files")
-    names = [f["name"] for f in p.js("S.files")]
-    p.check(len(set(names)) == 2 or names[0] != names[1],
-            "the collision did not get its own name")
+    names = [f["name"] for f in p.js("allFiles()")]
+    p.check(len(set(names)) == 2, "the collision did not get its own name")
 
-    p.run(f"openFile(S.files[0].id);", settle=900)
+    p.run("openFile(allFiles()[0].id);", settle=900)
     p.check(p.count(".viewer") == 1, "the viewer did not open")
     p.run("closeViewer();", settle=300)
     console_is_clean(p)
@@ -302,10 +317,11 @@ def step_8_people_links_files(p: Pass, sample: Path) -> None:
 
 def step_9_roadmap(p: Pass) -> None:
     p.at("9. Horizons at all three levels, park and unpark")
-    pid = p.js("S.projects[0].id")
+    pid = p.js("S.projects.find(function(x){return x.name==='Harbour site'}).id")
     for horizon in ("now", "next", "later", "someday"):
         p.run(f"setWhen({pid!r},{horizon!r});", settle=250)
-        p.same(p.js(f"Pr({pid!r}).hz"), horizon, f"the {horizon} horizon did not stick")
+        p.same(p.js(f"Pr({pid!r}).when"), horizon,
+               f"the {horizon} horizon did not stick")
     p.run("go('roadmap');")
     p.check("Someday" in p.html(), "the roadmap has no Someday column")
 
@@ -330,7 +346,8 @@ def step_10_ideas(p: Pass) -> None:
     p.check(not any(i["id"] == first["id"] for i in p.js("S.ideas")),
             "starting an idea left it in Ideas")
     started = p.js("S.projects.find(function(x){return x.name==='From an idea'})")
-    p.check(started and started.get("from"), "the new project does not say where it came from")
+    p.check(started and started.get("origin"),
+            "the new project does not say where it came from")
     p.run(f"openP({started['id']!r});")
     p.check("idea" in p.html().lower(), "the project page does not mention its origin")
 
@@ -354,8 +371,9 @@ def step_11_settings_shape(p: Pass) -> None:
     p.run(f"renameStage({tid!r},0,'Sketch');", settle=300)
     p.same(p.js(f"T({tid!r}).stages[0]"), "Sketch", "renaming a stage did not stick")
     p.run(f"addStage({tid!r});", settle=300)
-    p.run(f"addExp({tid!r},0,'Write down what it is for');", settle=300)
-    p.check("Write down what it is for" in json.dumps(p.js(f"T({tid!r}).expected")),
+    first = p.js(f"T({tid!r}).stages[0]")
+    p.run(f"addExp({tid!r},{first!r},'Write down what it is for');", settle=300)
+    p.check("Write down what it is for" in json.dumps(p.js(f"T({tid!r}).check")),
             "the checklist suggestion did not save")
 
     pid = p.js(f"S.projects.find(function(x){{return x.type==={tid!r}}}).id")
@@ -377,8 +395,11 @@ def step_12_export_import_recovery(p: Pass, work: Path) -> None:
     p.run("importData();", settle=900)
     p.run("doImport();", settle=1200)
     after = p.ui.on_disk()
-    p.same(len(after.get("projects", [])), len(before.get("projects", [])),
-           "importing what was exported changed the number of projects")
+    for key in ("projects", "ideas", "inbox", "library", "groups", "types",
+                "libraryFiles"):
+        p.same(json.dumps(after.get(key), sort_keys=True, default=str),
+               json.dumps(before.get(key), sort_keys=True, default=str),
+               f"{key} did not survive an export and import unchanged")
 
     p.ui.close()
     db = Path(os.environ["XDG_DATA_HOME"]) / "dig" / "dig.db"
@@ -419,21 +440,56 @@ def step_14_pdfs(p: Pass, work: Path) -> None:
         ok = target.exists() and target.stat().st_size > 1000
         p.check(ok, f"the PDF for {what} did not save")
         if ok:
-            head = target.read_bytes()[:5]
-            p.check(head == b"%PDF-", f"the PDF for {what} is not a PDF")
+            p.check(target.read_bytes()[:5] == b"%PDF-",
+                    f"the PDF for {what} is not a PDF")
+
+    # What goes on the page, checked where it is built rather than after the
+    # words have been turned into glyphs.
+    one = p.js(f"pdfProject(Pr({pid!r}))")
+    p.check(p.js(f"Pr({pid!r}).name") in one, "the one project page has no name on it")
+    p.check("Made by Dig, on this computer." in one,
+            "the one project page does not say where it was made")
+
+    every = p.js("pdfProjects()")
+    p.check("Private groups never appear here." in every,
+            "the projects page does not say what it left out")
+    private = p.js("S.groups.find(function(g){return g.priv})")
+    if private:
+        hidden = p.js("S.projects.filter(function(x){return G(x.group).priv})"
+                      ".map(function(x){return x.name})") or []
+        for name in hidden:
+            p.check(name not in every,
+                    f"a project in a private group is on the shared page: {name}")
+        p.check(private["name"] not in every,
+                "a private group is named on the shared page")
+
+    roadmap = p.js("pdfRoadmap()")
+    p.check("Private groups never appear here." in roadmap,
+            "the roadmap page does not say what it left out")
     console_is_clean(p)
 
 
 def step_15_geometry(p: Pass) -> None:
     p.at("15. Smallest and largest, and geometry remembered")
-    p.ui.window.resize(1100, 720)
-    p.ui.run("1;", settle=400)
+    smallest = p.ui.window.minimumSize()
+    p.check(smallest.width() <= 1100 and smallest.height() <= 720,
+            f"the smallest window is {smallest.width()}x{smallest.height()}")
+
     p.ui.window.resize(1500, 900)
-    p.ui.run("1;", settle=600)
-    p.ui.restart()
+    p.ui.run("1;", settle=700)
+    p.ui.close()
+    saved = (p.ui.store.load().state.get("ui") or {}).get("window") or {}
+    p.same(saved.get("w"), 1500, "the width was not written down")
+    p.same(saved.get("h"), 900, "the height was not written down")
+
+    # The harness sizes its own window on every start, which the real launch
+    # does not, so the remembered geometry is applied the way dig/app.py does.
+    p.ui.start()
+    p.ui.window.apply_geometry(saved)
+    p.ui.run("1;", settle=300)
     size = p.ui.window.size()
     p.check(abs(size.width() - 1500) < 60 and abs(size.height() - 900) < 60,
-            f"the window came back at {size.width()}x{size.height()}, not 1500x900")
+            f"the remembered geometry came back as {size.width()}x{size.height()}")
     console_is_clean(p)
 
 
@@ -487,13 +543,13 @@ def step_18_files_every_way(p: Pass, work: Path) -> None:
         (work / name).write_bytes(body)
 
     pid = p.js("S.projects[0].id")
-    before = len(p.js("S.files"))
+    before = p.js("allFiles().length")
     p.ui.queue_open(*[str(work / n) for n in made])
     p.run(f"addFiles({pid!r},'');", settle=2000)
-    p.same(len(p.js("S.files")), before + len(made), "not every file arrived")
+    p.same(p.js("allFiles().length"), before + len(made), "not every file arrived")
 
     for name in made:
-        fid = p.js(f"(S.files.find(function(f){{return f.name==={name!r}}})||{{}}).id")
+        fid = p.js(f"(allFiles().find(function(f){{return f.name==={name!r}}})||{{}}).id")
         if not p.check(fid, f"{name} is not in the file list"):
             continue
         p.run(f"openFile({fid!r});", settle=900)
@@ -507,12 +563,12 @@ def step_18_files_every_way(p: Pass, work: Path) -> None:
             p.check("Heading" in shown, "the markdown showed nothing")
         p.run("closeViewer();", settle=250)
 
-    fid = p.js("S.files[S.files.length-1].id")
+    fid = p.js("allFiles()[allFiles().length-1].id")
     copy_to = work / "saved-copy.png"
     p.ui.queue_save(str(copy_to))
     p.run(f"saveFileCopy({fid!r});", settle=1200)
     if p.check(copy_to.exists(), "save a copy wrote nothing"):
-        original = p.js(f"(S.files.find(function(f){{return f.id==={fid!r}}})||{{}}).name")
+        original = p.js(f"(allFiles().find(function(f){{return f.id==={fid!r}}})||{{}}).name")
         source = work / original if (work / original).exists() else None
         if source:
             p.check(copy_to.read_bytes() == source.read_bytes(),
@@ -527,28 +583,42 @@ def step_18_files_every_way(p: Pass, work: Path) -> None:
         p.check(any("manifest" in n.lower() for n in inside),
                 "the zip has no manifest")
 
-    text_id = p.js("(S.files.find(function(f){return f.name==='notes.txt'})||{}).id")
+    text_id = p.js("(allFiles().find(function(f){return f.name==='notes.txt'})||{}).id")
     if text_id:
         newer = work / "v2" / "notes.txt"
         newer.parent.mkdir(exist_ok=True)
         newer.write_bytes(b"A plain note, rewritten.\n")
         p.ui.queue_open(str(newer))
-        count_before = len(p.js("S.files"))
+        count_before = p.js("allFiles().length")
         p.run(f"addFiles({pid!r},'');", settle=1500)
         if p.count("#ov-dlg.open") == 1:
             p.run("resolveClash('version');", settle=1000)
-        p.same(len(p.js("S.files")), count_before,
-               "replacing a file as a new version made a second file")
-        p.check(p.js(f"(S.files.find(function(f){{return f.id==={text_id!r}}})||{{}}).version")
-                != 1, "the new version did not raise the version number")
+        p.same(p.js("allFiles().filter(function(f){return !f.superseded}).length"),
+               count_before, "the new version did not take the old one's place")
+        p.check(p.js(f"(allFiles().find(function(f){{return f.id==={text_id!r}}})"
+                     "||{}).superseded"),
+                "the file it replaced is not marked as replaced")
+        current = p.js("allFiles().find(function(f){return f.name==='notes.txt'"
+                       "&&!f.superseded})")
+        p.check(current and current.get("previous_file_id") == text_id,
+                "the new version does not point back at the one before it")
 
-        p.run(f"moveFile({text_id!r});", settle=400)
+        current = p.js("(allFiles().find(function(f){return f.name==='notes.txt'"
+                       "&&!f.superseded})||{}).id")
+        p.run(f"moveFile({current!r});", settle=500)
         p.run(f"var s=document.querySelector('#dlg-body select');if(s)s.value='';"
-              f"doMoveFile({text_id!r});", settle=700)
-        p.run(f"deleteFile({text_id!r});", settle=700)
-        p.check(not any(f["id"] == text_id for f in p.js("S.files")),
+              f"doMoveFile({current!r});", settle=800)
+        p.check(p.js(f"(fileById({current!r})||{{}}).project_id") in ("", None),
+                "moving a file to the Library left it on the project")
+
+        gone = p.js(f"JSON.stringify(fileById({current!r}))")
+        p.run(f"deleteFile({current!r});", settle=800)
+        p.check(not p.js(f"!!fileById({current!r})"),
                 "deleting a file left it in the list")
-        p.run("var t=S.toasts[S.toasts.length-1];if(t&&t.undo)t.undo();", settle=700)
+        p.check(any("Recently deleted" in t for t in p.toasts()),
+                "deleting a file did not say where it went")
+        p.run(f"undoDeleteFile({gone!r});", settle=800)
+        p.check(p.js(f"!!fileById({current!r})"), "undo did not bring the file back")
     console_is_clean(p)
 
 
@@ -573,12 +643,14 @@ def step_19_groups_and_log(p: Pass, work: Path) -> None:
     p.check(out.exists() and out.stat().st_size > 1000,
             "the group one pager did not save")
 
-    pid = p.js("S.projects[0].id")
+    pid = p.js("S.projects.find(function(x){return x.name==='Ledger'}).id")
     p.run(f"addLog('project',{pid!r},'Walked the whole thing with fresh eyes.');", settle=400)
     p.check(len(p.js(f"Pr({pid!r}).logs")) >= 1, "the log entry did not save")
     p.run(f"openP({pid!r});S.ptab='rec';render();")
     p.check("fresh eyes" in p.html(), "the log entry is not on the record")
-    p.run(f"toggleHighlight({pid!r},Pr({pid!r}).logs[0].id);", settle=350)
+    p.run(f"openP({pid!r});S.ptab='rm';render();")
+    p.check("fresh eyes" in p.html(), "the log entry is not on the project timeline")
+    p.run(f"toggleHighlight('project',{pid!r},Pr({pid!r}).logs[0].id);", settle=350)
     p.run("go('week');S.period='month';render();")
     p.check("fresh eyes" in p.html(), "a highlighted log entry is not in the review")
     console_is_clean(p)
@@ -590,7 +662,8 @@ def step_20_duplicate_and_templates(p: Pass) -> None:
     count = len(p.js("S.projects"))
     p.run(f"duplicateProject({pid!r});", settle=600)
     p.same(len(p.js("S.projects")), count + 1, "duplicating made no second project")
-    copy = p.js("S.projects[S.projects.length-1]")
+    p.run("closeOv();", settle=300)
+    copy = p.js("S.projects[0]")
     p.check(copy["name"] != p.js(f"Pr({pid!r}).name"),
             "the duplicate has exactly the same name")
     p.check(not copy["decisions"], "the duplicate carried the decisions over")
@@ -602,12 +675,13 @@ def step_20_duplicate_and_templates(p: Pass) -> None:
 
     tid = p.js("S.templates[0].id")
     p.run("openNew('');document.getElementById('np-n').value='From a template';"
-          f"var s=document.getElementById('np-tpl');if(s)s.value={tid!r};"
-          f"applyTemplate(null,{tid!r});createP(null);", settle=700)
+          f"document.getElementById('np-tpl').value={tid!r};createP(null);", settle=700)
     made = p.js("S.projects.find(function(x){return x.name==='From a template'})")
     if p.check(made, "the project from a template was not created"):
-        p.check(made["type"] == p.js(f"Pr({pid!r}).type"),
-                "the template did not carry its type")
+        p.same(made["type"], p.js(f"Pr({pid!r}).type"),
+               "the template did not carry its type")
+        p.check(len(made["items"]) == len(p.js(f"Pr({pid!r}).items")),
+                "the template did not carry its checklist")
     console_is_clean(p)
 
 
@@ -628,20 +702,58 @@ def step_21_recently_deleted(p: Pass) -> None:
 
 def step_22_command_line(p: Pass) -> None:
     p.at("22. dig add from a terminal")
+    from dig.single import parse_args
+
+    command = parse_args(["dig", "add", "Check", "the", "totals", "again"])
+    p.check(command == {"cmd": "add", "text": "Check the totals again",
+                        "kind": "auto", "project": ""},
+            f"dig add parsed to {command!r}")
+
+    # Letting it guess: this reads as a to-do, and a to-do with no project goes
+    # to the inbox, which is the same rule Ctrl K follows.
     before = len(p.js("S.inbox"))
-    p.ui.window.handle_command(json.dumps({"add": "Something from the terminal"}))
-    p.ui.run("1;", settle=800)
+    p.ui.window.handle_command({"command": command})
+    p.ui.run("1;", settle=900)
     p.same(len(p.js("S.inbox")), before + 1, "dig add did not reach the inbox")
-    p.check(any(i["text"] == "Something from the terminal" for i in p.js("S.inbox")),
+    p.check(any(i["text"] == "Check the totals again" for i in p.js("S.inbox")),
             "dig add saved the wrong words")
+
+    ideas_before = len(p.js("S.ideas"))
+    p.ui.window.handle_command(
+        {"command": parse_args(["dig", "add", "--idea", "A shelf for the hallway"])})
+    p.ui.run("1;", settle=900)
+    p.same(len(p.js("S.ideas")), ideas_before + 1, "dig add --idea did not reach Ideas")
+
+    library_before = len(p.js("S.library"))
+    p.ui.window.handle_command(
+        {"command": parse_args(["dig", "add", "--link", "example.com/handbook"])})
+    p.ui.run("1;", settle=900)
+    p.same(len(p.js("S.library")), library_before + 1,
+           "dig add --link did not reach the Library")
+
+    named = p.js("S.projects.find(function(x){return x.name==='Ledger'}).name")
+    onto = parse_args(["dig", "add", "--todo", "--project", named, "Check", "the", "totals"])
+    p.ui.window.handle_command({"command": onto})
+    p.ui.run("1;", settle=900)
+    p.check(p.js("S.projects.find(function(x){return x.name==='Ledger'})"
+                 ".items.some(function(i){return i.text==='Check the totals'})"),
+            "dig add with a project did not reach that project")
+
+    opened = parse_args(["dig", "open", named])
+    p.ui.window.handle_command({"command": opened})
+    p.ui.run("1;", settle=900)
+    p.same(p.js("S.view"), "project", "dig open did not open a project")
     console_is_clean(p)
 
 
 def step_23_quiet(p: Pass) -> None:
     p.at("23. A project goes quiet, and can be found")
-    pid = p.js("S.projects[0].id")
-    p.run(f"Pr({pid!r}).lastAct=new Date(Date.now()-40*864e5).toISOString();"
-          "render();scheduleSave();", settle=400)
+    pid = p.js("S.projects.find(function(x){return !x.wait&&!x.parked"
+               "&&!x.quiet&&!isLast(x)}).id")
+    if not p.check(pid, "nothing in the list could go quiet"):
+        return
+    p.run(f"Pr({pid!r}).lastAct=new Date(NOW-40*864e5);render();scheduleSave();",
+          settle=400)
     p.check(p.js(f"goneQuiet(Pr({pid!r}))"), "a month of silence did not count as quiet")
     p.run("go('projects');S.sort='quiet';render();")
     p.check(p.js(f"Pr({pid!r}).name") in p.html(),
@@ -673,7 +785,7 @@ def step_25_backup_and_restore(p: Pass, work: Path) -> None:
         return
     archive = made[0]
     before = p.ui.on_disk()
-    files_before = sorted(f["sha256"] for f in (before.get("files") or []))
+    files_before = every_hash(before)
 
     p.ui.close()
     root = Path(os.environ["XDG_DATA_HOME"]) / "dig"
@@ -688,7 +800,7 @@ def step_25_backup_and_restore(p: Pass, work: Path) -> None:
     after = p.ui.on_disk()
     p.same(len(after.get("projects", [])), len(before.get("projects", [])),
            "the restore brought back a different number of projects")
-    files_after = sorted(f["sha256"] for f in (after.get("files") or []))
+    files_after = every_hash(after)
     p.same(files_after, files_before, "the restored files are not the same bytes")
     console_is_clean(p)
 
@@ -710,43 +822,156 @@ def step_26_csv(p: Pass, work: Path) -> None:
 
 def step_27_sync(p: Pass, work: Path) -> None:
     p.at("27. Pair a device, sync both ways, force a disagreement, revoke")
+    import json as _json
+    import subprocess
+    import urllib.error
+    import urllib.request
+    import uuid
+
     from dig.sync.server import tailscale_addresses
 
     if not tailscale_addresses():
-        p.check(True, "")
         print("    skipped: there is no Tailscale address on this machine",
               flush=True)
         return
 
     p.run("go('settings');syncOn();", settle=2000)
     p.run("loadSync();", settle=1200)
-    running = p.js("SYNC.running")
-    if not p.check(running, "the sync server would not start"):
+    if not p.check(p.js("SYNC.running"), "the sync server would not start"):
         return
     address = p.js("SYNC.tailscale[0]")
     port = p.js("SYNC.port")
-    p.run("syncPair();", settle=1500)
-    code = p.js("SYNC.code||(document.querySelector('#dlg-body .code')||{}).textContent||''")
+    base = f"http://{address}:{port}/v1"
+
+    used = set()
+
+    def pair_code():
+        """Read the code off the dialog, the way a person would.
+
+        The dialog is filled in by two round trips through the bridge, so this
+        waits for a code it has not seen before rather than assuming the first
+        thing on screen is the new one.
+        """
+        p.run("document.getElementById('dlg-body').innerHTML='';syncPair();",
+              settle=1200)
+        for _ in range(12):
+            got = p.js("(document.querySelector('#dlg-body .code')||{}).textContent||''")
+            got = got.strip() if isinstance(got, str) else ""
+            if got and got not in used:
+                used.add(got)
+                p.run("closeOv();", settle=250)
+                return got
+            p.ui.run("1;", settle=400)
+        p.run("closeOv();", settle=250)
+        return ""
+
+    def ask(path, body=None, token="", method=""):
+        request = urllib.request.Request(
+            base + path,
+            data=_json.dumps(body).encode() if body is not None else None,
+            method=method or ("POST" if body is not None else "GET"),
+            headers={"Content-Type": "application/json",
+                     **({"Authorization": f"Bearer {token}"} if token else {})},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as answer:
+                return answer.status, _json.loads(answer.read().decode())
+        except urllib.error.HTTPError as refused:
+            return refused.code, _json.loads(refused.read().decode() or "{}")
+
+    # The reference client, first, because it is the thing another device has
+    # to agree with.
+    code = pair_code()
     if not p.check(code, "pairing produced no code"):
         return
-
-    import subprocess
     client = REPO / "tools" / "sync-client" / "dig_sync_client.py"
     done = subprocess.run(
         [sys.executable, str(client), "--address", str(address),
-         "--port", str(port), "--code", code.strip()],
+         "--port", str(port), "--code", code],
         capture_output=True, text=True, timeout=300,
     )
     p.check(done.returncode == 0,
-            f"the conformance client failed: {done.stdout[-400:]}{done.stderr[-200:]}")
+            f"the conformance client failed: {done.stdout[-500:]}{done.stderr[-200:]}")
 
+    # Then by hand, both directions, and a disagreement on purpose.
+    code = pair_code()
+    if not p.check(code, "the second pairing produced no code"):
+        return
+    device = str(uuid.uuid4())
+    status, answer = ask("/pair", {"code": code, "name": "A test device",
+                                   "device": device, "schema": 3})
+    if not p.check(status == 200 and answer.get("token"),
+                   f"pairing by hand was refused: {status} {answer}"):
+        return
+    token = answer["token"]
+
+    status, refused = ask("/changes?since=0")
+    p.check(status == 401, f"an unpaired request was answered with {status}")
+
+    # Out: what is here reaches the other device.
+    status, snapshot = ask("/state", token=token)
+    p.check(status == 200, f"the snapshot was refused with {status}")
+    here = p.js("S.projects.map(function(x){return x.name})") or []
+    there = [x.get("name") for x in (snapshot.get("state") or {}).get("projects") or []]
+    for name in here:
+        p.check(name in there, f"{name} did not reach the other device")
+    cursor = snapshot.get("cursor", 0)
+
+    # In: what the other device writes reaches this one.
+    made = str(uuid.uuid4())
+    status, pushed = ask("/push", {"schema": 3, "changes": [{
+        "collection": "ideas", "record_id": made, "op": "create", "rev": 1,
+        "at": "2026-09-04T12:00:00.000000", "device": device,
+        "payload": {"text": "Written on the other device", "desc": "",
+                    "at": "2026-09-04T12:00:00", "group_id": None},
+    }]}, token=token)
+    p.check(status == 200 and pushed["results"][0]["result"] == "accepted",
+            f"the other device could not write: {status} {pushed}")
+    p.run("reloadFromDisk();", settle=1600)
+    p.check(any(i["text"] == "Written on the other device" for i in p.js("S.ideas")),
+            "what the other device wrote never showed up here")
+
+    # Sending the same change again must not write it twice.
+    status, again = ask("/push", {"schema": 3, "changes": [{
+        "collection": "ideas", "record_id": made, "op": "create", "rev": 1,
+        "at": "2026-09-04T12:00:00.000000", "device": device,
+        "payload": {"text": "Written on the other device"},
+    }]}, token=token)
+    p.same(again["results"][0]["result"], "ignored",
+           "the same change arriving twice was applied twice")
+
+    # A disagreement on purpose: deleted here, edited there.
+    p.run(f"S.ideas=S.ideas.filter(function(i){{return i.id!=={made!r}}});"
+          "flushSave();", settle=1200)
+    status, clash = ask("/push", {"schema": 3, "changes": [{
+        "collection": "ideas", "record_id": made, "op": "update", "rev": 2,
+        "at": "2026-09-04T13:00:00.000000", "device": device,
+        "payload": {"text": "Edited on the other device"},
+    }]}, token=token)
+    p.same(clash["results"][0]["result"], "conflict",
+           "an edit was allowed to undo a delete")
+    p.check(not any(i["text"] == "Edited on the other device" for i in p.js("S.ideas")),
+            "the edit came back anyway")
+    p.run("loadConflicts();", settle=1200)
+    p.check(p.js("(CONFLICTS||[]).length") >= 1,
+            "the disagreement was not written down")
+    p.run("go('settings');", settle=900)
+    p.check("disagreed" in p.html().lower(),
+            "Settings says nothing about where two devices disagreed")
+
+    # Revoking: the next request is refused.
     p.run("loadSync();", settle=1000)
-    p.check(p.js("SYNC.devices.length") >= 1, "the paired device is not listed")
-    p.run("syncRevoke(SYNC.devices[0].id);", settle=1200)
-    p.run("loadSync();", settle=800)
+    p.check(p.js("SYNC.devices.length") >= 1, "the paired devices are not listed")
+    p.run("SYNC.devices.forEach(function(d){syncRevoke(d.id)});", settle=1600)
+    p.run("loadSync();", settle=900)
     p.check(p.js("SYNC.devices.filter(function(d){return !d.revoked}).length") == 0,
-            "revoking left the device paired")
-    p.run("syncOff();", settle=1200)
+            "revoking left a device paired")
+    status, _ = ask("/changes?since=0", token=token)
+    p.check(status == 401, f"a revoked device was still answered with {status}")
+
+    p.run("syncOff();", settle=1400)
+    p.run("loadSync();", settle=900)
+    p.check(not p.js("SYNC.running"), "the sync server would not stop")
     console_is_clean(p)
 
 
