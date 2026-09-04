@@ -42,8 +42,8 @@ def main(argv: list[str] | None = None) -> int:
     from PySide6.QtWidgets import QApplication
 
     from dig.bridge import Bridge
-    from dig.migrate_v1 import migrate_if_needed
-    from dig.storage import StateStore
+    from dig.startup import open_state
+    from dig.store import Store
     from dig.window import MainWindow
 
     QApplication.setApplicationName(__app_name__)
@@ -60,12 +60,9 @@ def main(argv: list[str] | None = None) -> int:
         app.setWindowIcon(QIcon(str(icon_path)))
 
     paths.ensure_data_dirs()
-    store = StateStore(paths.db_path(), paths.history_dir())
+    store = Store(paths.db_path(), paths.history_dir())
 
-    migration_notice = migrate_if_needed(store)
-    result = store.load()
-    if migration_notice and not result.notice:
-        result.notice = migration_notice
+    result = open_state(store)
 
     bridge = Bridge(store)
     window = MainWindow(bridge)

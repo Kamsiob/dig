@@ -63,7 +63,7 @@ def main() -> int:
 
     from dig import paths
     from dig.bridge import Bridge
-    from dig.storage import StateStore
+    from dig.store import Store
     from dig.window import MainWindow
 
     # A modal file dialog has nobody to click it, so a run can queue the
@@ -89,7 +89,7 @@ def main() -> int:
 
     app = QApplication([])
     paths.ensure_data_dirs()
-    store = StateStore(paths.db_path(), paths.history_dir())
+    store = Store(paths.db_path(), paths.history_dir())
     result = store.load()
 
     bridge = Bridge(store)

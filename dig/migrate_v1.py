@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.request
 import pwd
 import shutil
 import sqlite3
@@ -19,8 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dig import paths
-from dig.bridge import file_chip, human_size
-from dig.storage import StateStore
+from dig.store.blobs import BlobStore, chip, guess_mime
+from dig.store import Store
 
 APPS_GROUP = {"id": "apps", "name": "Apps", "color": "#0BA39E", "priv": False}
 
@@ -42,12 +43,17 @@ SHIPPED_STAGE = 6  # Keep up, the last App stage
 BUILDING_STAGE = 3  # Build, which is what v1 actually tracked
 
 
+def _read_only_uri(path: Path) -> str:
+    """A read only URI that survives a path holding a # or a ?."""
+    return "file:" + urllib.request.pathname2url(str(path)) + "?mode=ro"
+
+
 def looks_like_v1(db_path: Path) -> bool:
-    """A v1 file has apps and no state. A v2 file has state."""
+    """A v1 file has apps and no projects table. A v2 file has projects."""
     if not db_path.exists():
         return False
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn = sqlite3.connect(_read_only_uri(db_path), uri=True)
     except sqlite3.Error:
         return False
     try:
@@ -59,7 +65,7 @@ def looks_like_v1(db_path: Path) -> bool:
         return False
     finally:
         conn.close()
-    return "apps" in names and "state" not in names
+    return "apps" in names and "projects" not in names and "state" not in names
 
 
 def _owner_name() -> str:
@@ -96,7 +102,7 @@ def _short_date(value: str) -> str:
 
 def read_v1(db_path: Path) -> dict:
     """Everything v1 was holding, as plain Python."""
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = sqlite3.connect(_read_only_uri(db_path), uri=True)
     conn.row_factory = sqlite3.Row
     try:
         settings = {
@@ -121,8 +127,12 @@ def read_v1(db_path: Path) -> dict:
     }
 
 
-def build_state(v1: dict, move_files: bool = True) -> dict:
-    """Turn what v1 held into the v2 document."""
+def build_state(v1: dict, blobs: BlobStore | None = None) -> dict:
+    """Turn what v1 held into the v2 document.
+
+    Attachments are copied into the blob store, addressed by their SHA256.
+    The v1 folder is left exactly as it was; nothing of v1 is ever deleted.
+    """
     theme = v1["settings"].get("appearance", "system")
     if theme not in {"light", "dark", "system"}:
         theme = "system"
@@ -164,17 +174,26 @@ def build_state(v1: dict, move_files: bool = True) -> dict:
 
         files = []
         for row in files_by_app.get(app["id"], []):
-            stored = _rehome(row["stored_path"], app["id"], pid) if move_files else row["stored_path"]
-            size = human_size(int(row.get("size") or 0))
-            when = _short_date(_iso(row.get("added_at")))
-            files.append(
-                {
-                    "type": file_chip(row["filename"]),
-                    "name": row["filename"],
-                    "meta": f"{size} · {when}" if when else size,
-                    "stored_path": stored,
-                }
-            )
+            source = Path(row["stored_path"])
+            record = {
+                "id": f"v1f{row['id']}",
+                "name": row["filename"],
+                "type": chip(row["filename"]),
+                "mime": guess_mime(source),
+                "size": int(row.get("size") or 0),
+                "added_at": _iso(row.get("added_at")),
+                "project_id": pid,
+                "sha256": "",
+            }
+            if blobs is not None and source.is_file():
+                try:
+                    stored = blobs.put(source)
+                    record["sha256"] = stored.sha256
+                    record["size"] = stored.size
+                    record["mime"] = stored.mime
+                except OSError:
+                    pass
+            files.append(record)
 
         releases = []
         label = (app.get("version_label") or "").strip()
@@ -255,28 +274,7 @@ def _deep(value):
     return json.loads(json.dumps(value))
 
 
-def _rehome(stored_path: str, app_id: int, project_id: str) -> str:
-    """Where a v1 attachment ends up once its folder is renamed."""
-    old_root = paths.attachments_dir() / str(app_id)
-    new_root = paths.project_attachments_dir(project_id)
-    path = Path(stored_path)
-    try:
-        return str(new_root / path.relative_to(old_root))
-    except ValueError:
-        return stored_path
-
-
-def move_attachments(v1: dict) -> None:
-    """Rename each app's attachment folder to its new project ID."""
-    for app in v1["apps"]:
-        old = paths.attachments_dir() / str(app["id"])
-        new = paths.project_attachments_dir(f"v1a{app['id']}")
-        if old.is_dir() and not new.exists():
-            new.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(old), str(new))
-
-
-def migrate_if_needed(store: StateStore) -> str:
+def migrate_if_needed(store: Store) -> str:
     """Migrate a v1 file if one is here. Returns what to tell the person."""
     db_path = store.db_path
     if not looks_like_v1(db_path):
@@ -286,13 +284,30 @@ def migrate_if_needed(store: StateStore) -> str:
     try:
         v1 = read_v1(db_path)
         shutil.copy2(db_path, backup)
-        move_attachments(v1)
-        state = build_state(v1)
-        store.save(json.dumps(state))
     except Exception:
         return (
+            "Dig found data from version 1 but could not read it. Nothing was"
+            " changed and nothing was deleted."
+        )
+
+    try:
+        state = build_state(v1, BlobStore(paths.blobs_dir()))
+        # v1's own tables carry the same names as some of v2's and a different
+        # shape, so the v2 database starts clean rather than on top of them.
+        # The original is kept whole as dig-v1.db.bak first.
+        store.close()
+        db_path.unlink(missing_ok=True)
+        for extra in ("-wal", "-shm"):
+            db_path.with_name(db_path.name + extra).unlink(missing_ok=True)
+        store.save_state(state)
+    except Exception:
+        try:
+            shutil.copy2(backup, db_path)
+        except OSError:
+            pass
+        return (
             "Dig found data from version 1 but could not bring it across. Nothing"
-            " was deleted. Your old file is still where it was."
+            f" was deleted, and your old file is kept as {backup.name}."
         )
 
     apps = len(state["projects"])

@@ -37,20 +37,39 @@ whole state as a single JSON document. Zero network requests, ever.
 - Update this file at every commit, before any pause, when context runs low, when
   anything fails, and when any decision is made.
 
+## The addendum
+
+`docs/handoff-v2/ADDENDUM.md` arrived partway through Phase 6 and supersedes
+parts of the original prompt. It restructures the build plan (its Part 8) and
+adds: first run onboarding, a published app that ships empty, GitHub publishing
+with an AppImage, replacing the local install, a sync ready per record data model
+with an oplog, a private sync server over Tailscale for a future Android client,
+a complete file system with in app viewing, and the Part 7 feature set.
+
+It asked for Parts 5A and 6 to be built in Phase 1, before anything else. They
+arrived after Phase 5, so they are being retrofitted. That is contained: the
+interface holds the whole state as one object either way, and only persistence
+changes, so `adopt()` and `persist()` in `app.js` are the entire seam.
+
 ## Build plan progress
 
-Phases are defined in `docs/handoff-v2/BUILD_PLAN.md`. Do not merge or skip them.
+Phases as restructured by the addendum's Part 8.
 
 - [x] Phase 0: read, plan, checkpoint
-- [x] Phase 1: shell and bridge
+- [x] Phase 1: shell and bridge (single document storage)
+- [ ] Phase 1R: Part 5A per record model with oplog, Part 6 blob store
 - [x] Phase 2: move the prototype in
-- [x] Phase 3: native pieces
-- [x] Phase 4: setup defaults and migration
+- [x] Phase 3: native pieces (basic files, export, import, PDF)
+- [ ] Phase 3R: the full Part 6 file pipeline
+- [x] Phase 4: setup defaults and v1 migration
+- [ ] Phase 4.5: the Part 7 feature set
 - [x] Phase 5: desktop integration
-- [ ] Phase 6: fidelity pass
-- [ ] Phase 7: automated tests
-- [ ] Phase 8: scripted user testing
-- [ ] Phase 9: screenshots, README, release, export
+- [ ] Phase 5.5: Part 1 onboarding
+- [ ] Phase 5.75: Part 5B sync server, conformance client, docs/SYNC.md
+- [~] Phase 6: fidelity pass (done against the prototype; redo after the above)
+- [ ] Phase 7: automated tests, extended
+- [ ] Phase 8: scripted user testing, extended
+- [ ] Phase 9: screenshots, README, release, publish, replace the local install
 
 ## Decisions made on the owner's behalf
 
@@ -204,6 +223,45 @@ There is real v1 data on this machine at `~/.local/share/dig/dig.db`: one app
 plus the v1 `appearance` and `window_geometry` settings. The migration must
 handle it and keep the original file as `dig-v1.db.bak`.
 
+## The personal data situation (addendum Part 2)
+
+Handled on 2026-09-04. What was found, what was done, and what is left.
+
+**Found.** Everything sensitive sat in `docs/handoff-v2/design/dig-prototype.html`:
+the owner's real groups, thirteen real projects, two collaborators by name, a
+client and its town, a child's first name and age in a project note, and four
+real decisions. Six v2 commits carried it, all pushed to a repository that was
+public at the time, for about 53 minutes, with 0 stars and 0 forks. A second
+sweep found the same class of thing in the v1 history: real project and idea
+names in the v1 design mockup, the v1 screenshot generator, the v1 test suite,
+and four v1 screenshots that pictured them.
+
+Clean throughout: no absolute paths carrying the username, no IPs or Tailscale
+addresses, no keys or tokens, no database or export ever committed, no email
+beyond the public `hello@kamsiob.com` and the GitHub noreply.
+
+**Done.**
+1. The repository was made private immediately, on the owner's instruction.
+2. The original prototype is preserved outside the repository at
+   `~/Dig design reference (private, not in git)/`. Nothing was deleted.
+3. The prototype's seed was replaced with the generic example set from the
+   addendum's Part 1.4 (Website refresh, New client onboarding, Quarterly
+   report, Kitchen renovation, across Work and Home). It still runs on every
+   screen, tab, and dialog with no console errors.
+4. History was rewritten with `git filter-repo`: the prototype blob swapped for
+   the sanitized one in every commit, name substitutions applied to every other
+   blob, and `docs/screenshots/` removed entirely. Force pushed with lease.
+5. Verified by scanning every blob of every reachable commit in a fresh clone
+   from GitHub against 49 markers: none survive.
+
+**Left, and it matters before Phase 9.** GitHub still serves the old commits by
+exact SHA (`a966f94` through `cd94c5d`), because it does not garbage collect
+unreferenced objects on demand. That is harmless while the repository is private
+and only the owner can reach them. It stops being harmless the moment Part 3
+makes it public again. Before publishing, either ask GitHub Support to purge the
+unreferenced objects, or delete and recreate the repository. Do not make it
+public until one of those is done.
+
 ## Defects found and fixed
 
 1. **Opening a finished project rendered nothing.** Advancing into a last stage
@@ -218,11 +276,21 @@ handle it and keep the original file as `dig-v1.db.bak`.
 Both are inherited from the prototype and both will bite real data, so they are
 logged here rather than fixed quietly out of phase.
 
-1. **The sidebar footer collides.** At the design's 232px sidebar, Settings,
+4. **The sidebar footer collides.** At the design's 232px sidebar, Settings,
    "Shortcuts ?", and the Light / Dark / Auto switch do not fit on one line, so
    "Shortcuts" wraps onto "Settings" and the sidebar grows a horizontal
    scrollbar. Confirmed in the prototype itself with real Geist metrics.
-2. **An apostrophe in a stage name or a checklist suggestion breaks its button.**
+2. **The last thing typed before quitting was lost.** The interface holds a
+   change for 150 ms before handing it over, and the window closed straight
+   away, so anything typed in that instant never reached the disk. Worst for
+   Notes and Next step, which save without re-rendering. Found by an adversarial
+   reviewer's repro. `MainWindow.closeEvent` now refuses the first close, asks
+   the interface to hand over what it is holding, waits for it to arrive (up to
+   400 ms), writes it, and only then goes.
+
+## Known defects to fix in Phase 8
+
+3. **An apostrophe in a stage name or a checklist suggestion breaks its button.**
    `addExpected`, `addExp`, and `delExp` build single quoted JavaScript string
    literals inside double quoted HTML attributes. A stage called "Don't ship
    Friday" would produce a broken handler. The `jsq()` helper added in Phase 2 is

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QRect, QUrl
+from PySide6.QtCore import QEvent, QRect, QTimer, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import (
@@ -26,6 +26,11 @@ from dig import __app_name__, paths
 
 MIN_WIDTH = 1100
 MIN_HEIGHT = 720
+
+# How long the window waits, on the way out, for the interface to hand over
+# anything still sitting in its own debounce.
+CLOSE_DRAIN_MS = 25
+CLOSE_DRAIN_TRIES = 16
 
 # The only schemes the interface is allowed to load. Everything else, http and
 # https included, is refused before a connection is ever opened.
@@ -123,6 +128,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.view)
 
         self.bridge = bridge
+        self._closing = False
+        self._geometry_timer = QTimer(self)
+        self._geometry_timer.setSingleShot(True)
+        self._geometry_timer.setInterval(400)
+        self._geometry_timer.timeout.connect(self._remember_geometry)
 
     def load_ui(self) -> None:
         index = paths.ui_dir() / "index.html"
@@ -160,9 +170,51 @@ class MainWindow(QMainWindow):
         if saved.get("max"):
             self.showMaximized()
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._geometry_timer.start()
+
+    def moveEvent(self, event) -> None:
+        super().moveEvent(event)
+        self._geometry_timer.start()
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self.bridge.recheck_motion()
+
+    def _remember_geometry(self) -> None:
+        """A resize with nothing else going on is still worth keeping."""
+        try:
+            self.bridge.store.update_window(self.geometry_dict())
+        except Exception:
+            pass
+
     def closeEvent(self, event) -> None:
-        self.bridge.flush()
-        super().closeEvent(event)
+        """Do not go until the last thing typed has reached the disk.
+
+        The interface holds a change for a moment before handing it over, so a
+        window that closed straight away would lose whatever was typed in the
+        instant before quitting.
+        """
+        if self._closing:
+            self.bridge.flush()
+            super().closeEvent(event)
+            return
+        self._closing = True
+        event.ignore()
+        self._remember_geometry()
+        self.page.runJavaScript("window.flushSave&&window.flushSave();1")
+        self._drain(0)
+
+    def _drain(self, tries: int) -> None:
+        if self.bridge.has_pending() or tries >= CLOSE_DRAIN_TRIES:
+            self.bridge.flush()
+            self.close()
+            return
+        # Bound to this window, so a closed window stops draining rather
+        # than firing into an object Qt has already taken away.
+        QTimer.singleShot(CLOSE_DRAIN_MS, self, lambda: self._drain(tries + 1))
 
 
 def _on_a_screen(x: int, y: int, width: int, height: int) -> bool:

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from dig import migrate_v1, paths
-from dig.storage import StateStore
+from dig.store import Store
 
 V1_SCHEMA = """
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -91,7 +91,7 @@ def v1_home(tmp_path: Path, monkeypatch) -> Path:
 
 
 def run_migration() -> tuple[str, dict]:
-    store = StateStore(paths.db_path(), paths.history_dir())
+    store = Store(paths.db_path(), paths.history_dir())
     notice = migrate_v1.migrate_if_needed(store)
     return notice, store.load().state
 
@@ -103,14 +103,14 @@ def test_a_v1_file_is_recognized(v1_home: Path) -> None:
 def test_a_v2_file_is_not_mistaken_for_v1(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     paths.ensure_data_dirs()
-    StateStore(paths.db_path(), paths.history_dir()).save(json.dumps({"projects": []}))
+    Store(paths.db_path(), paths.history_dir()).save_state({"projects": [], "org": "x"})
     assert migrate_v1.looks_like_v1(paths.db_path()) is False
 
 
 def test_nothing_to_migrate_on_a_new_machine(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     paths.ensure_data_dirs()
-    store = StateStore(paths.db_path(), paths.history_dir())
+    store = Store(paths.db_path(), paths.history_dir())
     assert migrate_v1.migrate_if_needed(store) == ""
 
 
@@ -127,7 +127,7 @@ def test_the_v1_file_is_kept(v1_home: Path) -> None:
 
 def test_it_only_runs_once(v1_home: Path) -> None:
     run_migration()
-    store = StateStore(paths.db_path(), paths.history_dir())
+    store = Store(paths.db_path(), paths.history_dir())
     assert migrate_v1.migrate_if_needed(store) == ""
 
 
@@ -141,9 +141,9 @@ def test_settings_carry_over(v1_home: Path) -> None:
 def test_one_apps_group_and_the_app_type(v1_home: Path) -> None:
     _, state = run_migration()
     assert [g["id"] for g in state["groups"]] == ["apps"]
-    assert state["groups"][0] == {
-        "id": "apps", "name": "Apps", "color": "#0BA39E", "priv": False
-    }
+    group = state["groups"][0]
+    assert group["id"] == "apps" and group["name"] == "Apps"
+    assert group["color"] == "#0BA39E" and group["priv"] is False
     assert [t["id"] for t in state["types"]] == ["app"]
     assert state["types"][0]["stages"] == [
         "Idea", "Plan", "Design", "Build", "Test", "Release", "Keep up"
@@ -179,9 +179,11 @@ def test_a_description_stands_in_for_missing_notes(v1_home: Path) -> None:
 def test_a_version_label_becomes_a_release(v1_home: Path) -> None:
     _, state = run_migration()
     shipped = next(p for p in state["projects"] if p["name"] == "Recipe Box")
-    assert shipped["releases"] == [
-        {"v": "1.0.0", "at": "2026-02-01T09:00:00", "note": "Carried over from Dig v1"}
-    ]
+    assert len(shipped["releases"]) == 1
+    release = shipped["releases"][0]
+    assert release["v"] == "1.0.0"
+    assert release["at"] == "2026-02-01T09:00:00"
+    assert release["note"] == "Carried over from Dig v1"
     building = next(p for p in state["projects"] if p["name"] == "Field Notes")
     assert building["releases"] == []
 
@@ -195,17 +197,22 @@ def test_sheet_lines_become_checklist_items_with_the_bug_tag(v1_home: Path) -> N
     ]
 
 
-def test_attachments_move_and_keep_pointing_at_themselves(v1_home: Path) -> None:
+def test_attachments_are_taken_into_the_blob_store(v1_home: Path) -> None:
+    from dig.store.blobs import BlobStore
+
     _, state = run_migration()
     building = next(p for p in state["projects"] if p["name"] == "Field Notes")
     assert len(building["files"]) == 1
-    stored = Path(building["files"][0]["stored_path"])
+    record = building["files"][0]
 
-    assert stored.exists(), "the bytes moved with the record"
-    assert stored.parent == paths.project_attachments_dir("v1a1")
-    assert not (paths.attachments_dir() / "1").exists()
-    assert building["files"][0]["type"] == "PDF"
-    assert building["files"][0]["meta"].startswith("2 KB")
+    assert record["type"] == "PDF"
+    assert record["size"] == 2048
+    assert len(record["sha256"]) == 64
+
+    blobs = BlobStore(paths.blobs_dir())
+    assert blobs.has(record["sha256"]), "the bytes came across"
+    assert blobs.read(record["sha256"]) == b"x" * 2048
+    assert (paths.attachments_dir() / "1" / "spec.pdf").exists(), "and v1's copy is left alone"
 
 
 def test_ideas_come_across_except_the_promoted_one(v1_home: Path) -> None:
@@ -249,10 +256,10 @@ def test_the_notice_says_what_came_across(v1_home: Path) -> None:
 
 def test_the_document_matches_the_v2_shape(v1_home: Path) -> None:
     _, state = run_migration()
-    assert set(state) == {
+    assert {
         "org", "you", "theme", "setupDone", "groups", "types", "projects",
         "ideas", "inbox", "library", "activity", "ui",
-    }
+    } <= set(state)
     assert set(state["ui"]) == {
         "filterGroup", "sort", "ideaSort", "libFilter", "publicOnly", "ptab",
         "resurfId", "window",
@@ -281,7 +288,7 @@ def test_the_migrated_app_opens_on_home_and_shows_the_projects(v1_home, launch) 
     ui = launch()
     assert ui.js("S.view") == "home", "someone with data is not asked to set up"
     assert ui.js("S.setupDone") is True
-    assert sorted(p["name"] for p in ui.js("S.projects")) == ["Recipe Box", "Field Notes"]
+    assert sorted(p["name"] for p in ui.js("S.projects")) == ["Field Notes", "Recipe Box"]
     assert ui.js("S.theme") == "dark", "v1's appearance carried over"
 
     ui.run("S.view='projects';render();")

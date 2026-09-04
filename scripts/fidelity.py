@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+"""Compare the app against the prototype, screen by screen, in both themes.
+
+The prototype is the product's interface, so the only honest test of the port is
+to put the two side by side on identical data with the clock frozen to the same
+instant, and look at what differs. This does that twice over: pixel by pixel,
+and in the markup.
+
+    python scripts/fidelity.py --seed seed.json --out shots --data /tmp/run
+
+Anything the pixel diff reports is drift. Anything the markup diff reports is
+either drift or one of the bridge seams listed in SEAMS below.
+
+Both sides are given the same locally bundled fonts, the same frozen clock, no
+animation, no caret, and the window focus in turn, because otherwise the
+comparison measures the font, the stopwatch, or which window happened to be
+active rather than the port.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
+
+PROTOTYPE = REPO / "docs" / "handoff-v2" / "design" / "dig-prototype.html"
+FONTS = REPO / "dig" / "ui" / "fonts"
+FROZEN = "2026-09-04T14:00:00"
+RESURF = "e3"
+SIZE = (1280, 840)
+
+LOCAL_FONTS = "".join(
+    f"@font-face{{font-family:{family!r};src:url('file://{FONTS}/{file}.woff2')"
+    f" format('woff2');font-weight:{weight};font-style:normal;font-display:block}}"
+    for family, file, weight in (
+        ("Geist", "Geist-Regular", 400),
+        ("Geist", "Geist-Medium", 500),
+        ("Geist", "Geist-SemiBold", 600),
+        ("Geist", "Geist-Bold", 700),
+        ("Geist Mono", "GeistMono-Regular", 400),
+        ("Geist Mono", "GeistMono-Medium", 500),
+    )
+)
+
+PROTO_PREP = f"""
+document.querySelector('.proto-bar').remove();
+document.querySelectorAll('link[href*="fonts.googleapis"],link[href*="gstatic"]')
+  .forEach(function(l){{l.remove()}});
+document.body.style.padding='0';
+document.body.style.display='block';
+var st=document.createElement('style');
+st.textContent={LOCAL_FONTS!r}+'.proto{{max-width:none}}.app{{height:840px;border:none;border-radius:0;box-shadow:none}}';
+document.head.appendChild(st);
+NOW=new Date('{FROZEN}');
+S.resurfId={RESURF!r};
+document.fonts.ready.then(function(){{window.__fontsReady=1}});
+1
+"""
+
+APP_PREP = f"""
+Object.defineProperty(window,'NOW',{{get:function(){{return new Date('{FROZEN}')}},configurable:true}});
+S.resurfId={RESURF!r};
+S.setupWork={{apps:false,clients:true,content:false,personal:true,programs:false}};
+document.fonts.ready.then(function(){{window.__fontsReady=1}});
+1
+"""
+
+STILL = (
+    "var s=document.createElement('style');"
+    "s.textContent='*{animation:none!important;transition:none!important;"
+    "caret-color:transparent!important}';"
+    "document.head.appendChild(s);1"
+)
+
+REFOCUS = (
+    "var f=document.querySelector('#cap-in')||document.querySelector('#pal-in')"
+    "||document.querySelector('#dlg-body input[type=text],#dlg-body textarea,"
+    "#dlg-body select');if(f)f.focus();1"
+)
+
+SCREENS = [
+    ("setup", "S.view='setup'"),
+    ("home", "S.view='home';S.filterGroup='all'"),
+    ("projects", "S.view='projects';S.sort='activity';S.filterGroup='all'"),
+    ("projects-waiting", "S.view='projects';S.sort='waiting'"),
+    ("projects-finished", "S.view='projects';S.sort='done'"),
+    ("projects-parked", "S.view='projects';S.sort='parked'"),
+    ("projects-group", "S.view='projects';S.sort='activity';S.filterGroup='work'"),
+    ("roadmap", "S.view='roadmap';S.filterGroup='all'"),
+    ("roadmap-private", "S.view='roadmap';S.filterGroup='home'"),
+    ("project-work", "S.view='project';S.projectId='wr';S.ptab='work';S.filterGroup='all'"),
+    ("project-work-wait", "S.view='project';S.projectId='nco';S.ptab='work'"),
+    ("project-rm", "S.view='project';S.projectId='wr';S.ptab='rm'"),
+    ("project-rec", "S.view='project';S.projectId='wr';S.ptab='rec'"),
+    ("project-empty", "S.view='project';S.projectId='kr';S.ptab='work'"),
+    ("project-rm-empty", "S.view='project';S.projectId='kr';S.ptab='rm'"),
+    ("project-rec-empty", "S.view='project';S.projectId='kr';S.ptab='rec'"),
+    ("week", "S.view='week';S.publicOnly=true"),
+    ("week-private", "S.view='week';S.publicOnly=false"),
+    ("ideas", "S.view='ideas';S.filterGroup='all';S.ideaSort='oldest'"),
+    ("ideas-newest", "S.view='ideas';S.ideaSort='newest'"),
+    ("library", "S.view='library';S.libFilter='all'"),
+    ("library-unsorted", "S.view='library';S.libFilter='unsorted'"),
+    ("settings", "S.view='settings'"),
+]
+
+DIALOGS = [
+    ("dlg-capture", "S.view='home';render();openCap();"
+     "document.getElementById('cap-in').value='Old gallery page still 404s';"
+     "S.capProject='wr';document.getElementById('cap-p').value='wr';capDetect()"),
+    ("dlg-capture-empty", "S.view='home';render();openCap()"),
+    ("dlg-find", "S.view='home';render();openPal();"
+     "document.getElementById('pal-in').value='we';palFilter('we')"),
+    ("dlg-advance", "S.view='project';S.projectId='wr';S.ptab='work';render();openAdvance('wr')"),
+    ("dlg-advance-clean", "S.view='project';S.projectId='qr';S.ptab='work';render();openAdvance('qr')"),
+    ("dlg-decision", "S.view='project';S.projectId='wr';S.ptab='rec';render();openDec('wr')"),
+    ("dlg-wait", "S.view='project';S.projectId='wr';render();openWait('wr')"),
+    ("dlg-new", "S.view='projects';render();openNew('work')"),
+    ("dlg-idea", "S.view='ideas';render();openIdea('e3')"),
+    ("dlg-start-idea", "S.view='ideas';render();startIdea('e3')"),
+    ("dlg-inbox-sort", "S.view='home';render();openSort('e5')"),
+    ("dlg-library-move", "S.view='library';render();openSortLib('e7')"),
+    ("dlg-share-project", "S.view='project';S.projectId='wr';render();openShare('wr')"),
+    ("dlg-share-projects", "S.view='projects';render();openShare(null)"),
+    ("dlg-share-roadmap", "S.view='roadmap';render();openShare('rm')"),
+    ("dlg-keys", "S.view='home';render();openKeys()"),
+    ("dlg-person", "S.view='project';S.projectId='wr';render();addPerson('wr')"),
+    ("dlg-release", "S.view='project';S.projectId='wr';render();addRelease('wr')"),
+    ("dlg-link", "S.view='project';S.projectId='wr';render();addLink('wr')"),
+]
+
+# Everything the port is allowed to differ by: the bridge seams SPEC section 1
+# asks for. Each rule rewrites the app's markup back to the prototype's.
+SEAMS = [
+    (r'<a onclick="openLink\(&quot;[^"]*?&quot;\)">', "<a>"),
+    (r'<div class="file" onclick="openStored\(&quot;[^"]*?&quot;\)">', '<div class="file">'),
+    (r'<div class="row click" onclick="openLink\(&quot;[^"]*?&quot;\)">', '<div class="row">'),
+    (r'<div class="row click" onclick="openStored\(&quot;[^"]*?&quot;\)">', '<div class="row">'),
+    (r'<div class="row" onclick="openStored\(&quot;[^"]*?&quot;\)">', '<div class="row">'),
+    (r"event\.stopPropagation\(\);openSortLib", "openSortLib"),
+    (r";scheduleSave\(\)", ""),
+    (r'onclick="openDataFolder\(\)"', "onclick=\"toast('Opens the folder in the real app')\""),
+    (r'onclick="importData\(\)"', "onclick=\"toast('Import opens a file picker in the real app')\""),
+    (r'onclick="openAbout\(\)"', "onclick=\"toast('About dialog lives here in the real app')\""),
+    (r'onclick="savePdfWeek\(\)"', "onclick=\"toast('In the real app this saves a PDF.')\""),
+    (r'onclick="doShare\([^"]*?\)"',
+     "onclick=\"closeOv();toast('In the real app this saves the file.')\""),
+    (r'onclick="finishSetup\(\)"',
+     "onclick=\"go('home');toast('You\\'re set. Press Ctrl K any time to add something.')\""),
+    (r'<span style="font-family:var\(--mono\);font-size:12px">[^<]*dig\.db</span>',
+     '<span style="font-family:var(--mono);font-size:12px">~/.local/share/dig/dig.db</span>'),
+]
+
+
+def normalize(markup: str) -> str:
+    for pattern, replacement in SEAMS:
+        markup = re.sub(pattern, replacement, markup)
+    return markup
+
+
+class Page:
+    """One loaded document we can drive and photograph."""
+
+    def __init__(self, view, page) -> None:
+        self.view, self.page = view, page
+
+    def js(self, code: str):
+        from PySide6.QtCore import QEventLoop, QTimer
+
+        box, loop = {}, QEventLoop()
+        QTimer.singleShot(15000, loop.quit)
+        self.page.runJavaScript(code, lambda v: (box.setdefault("v", v), loop.quit()))
+        loop.exec()
+        return box.get("v")
+
+    def settle(self, ms: int = 420) -> None:
+        from PySide6.QtCore import QEventLoop, QTimer
+
+        loop = QEventLoop()
+        QTimer.singleShot(ms, loop.quit)
+        loop.exec()
+
+    def await_fonts(self) -> None:
+        for _ in range(20):
+            self.settle(150)
+            if self.js("window.__fontsReady||0"):
+                return
+
+    def focus(self) -> None:
+        self.view.activateWindow()
+        self.view.raise_()
+        self.view.setFocus()
+        self.settle(120)
+        self.js(REFOCUS)
+        self.settle(140)
+
+    def shoot(self, path: Path):
+        image = self.view.grab().toImage()
+        image.save(str(path))
+        return image
+
+    def markup(self) -> str:
+        return self.js("document.getElementById('app').innerHTML") or ""
+
+
+def pixel_diff(a, b) -> tuple[float, int]:
+    """Share of pixels that differ, and how many."""
+    if a.size() != b.size():
+        return 100.0, -1
+    a = a.convertToFormat(a.Format.Format_RGB32)
+    b = b.convertToFormat(b.Format.Format_RGB32)
+    width, height = a.width(), a.height()
+    differing = 0
+    for y in range(height):
+        row_a = bytes(a.constScanLine(y))[: width * 4]
+        row_b = bytes(b.constScanLine(y))[: width * 4]
+        if row_a == row_b:
+            continue
+        for x in range(0, width * 4, 4):
+            if row_a[x : x + 3] != row_b[x : x + 3]:
+                differing += 1
+    return (differing * 100.0 / (width * height)), differing
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--seed", required=True, help="the prototype's data as a v2 document")
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--data", required=True)
+    ap.add_argument("--report", default="")
+    ap.add_argument("--only", default="")
+    args = ap.parse_args()
+
+    os.environ["XDG_DATA_HOME"] = str(Path(args.data).resolve())
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ.setdefault(
+        "QTWEBENGINE_CHROMIUM_FLAGS",
+        "--disable-gpu --no-sandbox --in-process-gpu --disable-dev-shm-usage",
+    )
+
+    from PySide6.QtCore import QUrl
+    from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+    from PySide6.QtWidgets import QApplication
+
+    from dig import paths
+    from dig.bridge import Bridge
+    from dig.store import Store
+    from dig.window import LocalOnlyInterceptor, MainWindow
+
+    out = Path(args.out)
+    for sub in ("proto", "app", "markup"):
+        (out / sub).mkdir(parents=True, exist_ok=True)
+
+    app = QApplication([])
+
+    # The prototype, in its own window, held to the same no network rule.
+    proto_profile = QWebEngineProfile("fidelity-proto")
+    proto_blocker = LocalOnlyInterceptor()
+    proto_profile.setUrlRequestInterceptor(proto_blocker)
+    proto_view = QWebEngineView()
+    proto_page = QWebEnginePage(proto_profile, proto_view)
+    proto_view.setPage(proto_page)
+    proto_page.settings().setAttribute(
+        QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True
+    )
+    proto_view.resize(*SIZE)
+    proto_view.show()
+    proto_view.setUrl(QUrl.fromLocalFile(str(PROTOTYPE)))
+    proto = Page(proto_view, proto_page)
+    proto.settle(2500)
+    proto.js(PROTO_PREP)
+    proto.js(STILL)
+    proto.await_fonts()
+    proto.js("render();1")
+    proto.settle(400)
+
+    # The app, in its real window, against the same data.
+    paths.ensure_data_dirs()
+    store = Store(paths.db_path(), paths.history_dir())
+    store.save_state(json.loads(Path(args.seed).read_text(encoding="utf-8")))
+    result = store.load()
+    bridge = Bridge(store)
+    window = MainWindow(bridge)
+    bridge.attach_window(window)
+    bridge.prime(result)
+    window.resize(*SIZE)
+    window.load_ui()
+    window.show()
+    real = Page(window, window.page)
+    real.settle(2500)
+    real.js(APP_PREP)
+    real.js(STILL)
+    real.await_fonts()
+    real.js("render();1")
+    real.settle(400)
+
+    console: list[str] = []
+    original = window.page.javaScriptConsoleMessage
+    window.page.javaScriptConsoleMessage = lambda lvl, msg, line, src: (
+        console.append(f"{msg} ({Path(src).name}:{line})"),
+        original(lvl, msg, line, src),
+    )
+
+    cases = [(n, s, False) for n, s in SCREENS] + [(n, s, True) for n, s in DIALOGS]
+    if args.only:
+        wanted = set(args.only.split(","))
+        cases = [c for c in cases if c[0] in wanted]
+
+    findings = []
+    for theme in ("light", "dark"):
+        for name, script, is_dialog in cases:
+            label = f"{name}-{theme}"
+            prelude = f"closeOv();S.theme={theme!r};S.resurfId={RESURF!r};"
+            body = script if is_dialog else f"{script};render()"
+            for page in (proto, real):
+                page.focus()
+                page.js(f"(function(){{{prelude}{body};return 1}})()")
+                page.settle(520)
+            for page in (proto, real):
+                page.focus()
+
+            proto_image = proto.shoot(out / "proto" / f"{label}.png")
+            app_image = real.shoot(out / "app" / f"{label}.png")
+            share, count = pixel_diff(proto_image, app_image)
+
+            proto_markup = proto.markup()
+            app_markup = normalize(real.markup())
+            same_markup = proto_markup == app_markup
+            if not same_markup:
+                (out / "markup" / f"{label}.proto.html").write_text(proto_markup)
+                (out / "markup" / f"{label}.app.html").write_text(app_markup)
+
+            findings.append(
+                {
+                    "case": label,
+                    "pixel_pct": round(share, 4),
+                    "pixels": count,
+                    "markup_identical": same_markup,
+                }
+            )
+            flag = "" if (share == 0 and same_markup) else "   <-- LOOK"
+            print(
+                f"{label:36s} pixels {share:7.4f}%  markup "
+                f"{'same' if same_markup else 'DIFFERS'}{flag}",
+                flush=True,
+            )
+
+    clean = [f for f in findings if f["pixel_pct"] == 0 and f["markup_identical"]]
+    print(f"\n{len(clean)} of {len(findings)} cases identical")
+    if console:
+        print("console messages:", console)
+    print("blocked requests, app:", window.interceptor.blocked)
+    print("blocked requests, prototype:", proto_blocker.blocked)
+
+    if args.report:
+        Path(args.report).write_text(
+            json.dumps(
+                {
+                    "findings": findings,
+                    "console": console,
+                    "blocked": list(window.interceptor.blocked) + list(proto_blocker.blocked),
+                },
+                indent=1,
+            )
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

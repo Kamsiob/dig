@@ -1,172 +1,102 @@
 # Dig
 
-**A place to bury ideas and dig them back up.**
+Dig keeps every project you are working on in one place: what stage each one is
+at, what its next step is, and what you decided along the way. Ideas wait until
+you start them. Everything stays on this computer.
 
-Dig is a local-first desktop app registry for vibe coders. Jot an idea the second
-it lands, let it settle, and let Dig hand you back an old one you had forgotten.
-Promote the ones worth building into apps, and keep a plain feature and bug sheet
-for each.
+It is for one person running several lines of work at once, apps, client work,
+personal projects, content, programs, who wants to open one window and see where
+everything actually stands.
 
-Everything stays on your machine. No account, no telemetry, no network calls.
+Dig makes no outbound internet requests of any kind. There are no accounts and
+there is no cloud. Sync is off by default, and when you turn it on it is a
+direct connection between your own devices on your own private network, with
+nothing passing through anyone else's servers.
 
-![Dig on Home, light theme](docs/screenshots/home-light.png)
+## What it does
 
-## What it is, and what it is not
+- **Projects and stages.** Every project has a type, and a type decides which
+  stages it moves through and what each stage's checklist suggests. You decide
+  when something moves. No boards, no dragging.
+- **Next steps.** One line per project saying the single thing that moves it
+  forward. Home shows the four that have been sitting longest.
+- **Waiting on someone else.** Mark what a project is waiting for. Dig counts
+  the days and never nags anyone.
+- **A roadmap at every level.** Now, Next, Later, Someday, for everything or for
+  one group.
+- **Ideas.** Things you might make one day, with no stage and no deadline. Dig
+  brings an old one back for a second look now and then.
+- **Decisions.** Numbered, dated, permanent. Replaced ones stay visible, crossed
+  out, so the reasoning survives.
+- **Releases and files.** What shipped and when, and the documents that came
+  with it, kept inside Dig.
+- **Your week.** Written from what actually happened: stage changes, decisions,
+  releases, and waits. If nothing moved, it says so.
+- **Sharing.** A PDF of one project, of your projects, of the roadmap, or of the
+  week. Private groups never appear, and every export says what was left out.
 
-Most tools want your idea to become a ticket. Dig only wants you to write it down
-before it goes, and it takes on the one job a notes app never does: bringing an
-old idea back up when you have stopped thinking about it.
+## What Dig is not
 
-**Dig is not a project manager.** There are no priorities, no statuses beyond done
-and not-done, no dates on tasks, no sprints, and no assignees. Anywhere. Ever. A
-line on a sheet is either done or it is not, and that is the whole model.
+These are decisions, not gaps. Dig has no boards or drag and drop, no due dates
+on tasks, no priorities, no assignees, no time tracking, no money or invoicing,
+no notifications, no accounts or cloud, and no AI.
 
-## The idea of it
+## Running it
 
-- **Jot** — Home opens with the cursor already in the box. First line becomes the
-  title, everything after it becomes the note. Enter keeps it, and the cursor
-  stays put so the next one can follow straight away.
-- **Bury** — ideas simply sit there. Nothing nags, nothing expires.
-- **Unearth** — Home shows one older idea at random, drawn from everything below
-  the three most recent, with how long it has been in the ground. "Dig again"
-  redraws and never hands back the one already showing.
-- **Promote** — an idea worth building becomes an app, and the original jot stays
-  attached to it as its origin. The thread from a stray thought to a shipped
-  thing stays visible.
+Dig needs Python 3.11 or newer and PySide6 with QtWebEngine. On Bazzite and
+other image based systems everything installs into your home folder; nothing is
+written to `/usr` and nothing asks for root.
 
-## Features
-
-- Jot capture with a keyboard-only path from empty screen to saved idea
-- Random resurfacing of old ideas, with "buried 6 weeks" and "never opened since"
-- Full idea ledger with live search; promoted ideas kept out of the way but never
-  destroyed
-- App registry with SHIPPED and version chips, live open counts, and an origin
-  callout back to the jot it came from
-- Feature and bug sheets: click to toggle done, inline add, and nothing else
-- Notes, screenshots and file attachments, copied into Dig's own folder rather
-  than referenced where they sit
-- Capture dialog on **Ctrl K** from any screen, for a feature or bug on an
-  existing app
-- PDF portfolio export: a cover, one page per app with screenshots, and a closing
-  page of ideas still in the ground
-- Two full themes that follow the desktop if you ask them to
-
-## Screenshots
-
-| Home, dark | App detail |
-|---|---|
-| ![Home in the dark theme](docs/screenshots/home-dark.png) | ![An app in full](docs/screenshots/app-detail.png) |
-
-![The capture dialog](docs/screenshots/capture.png)
-
-## Install
-
-Built and tested on Bazzite with KDE Plasma on Wayland. Anything with Python 3.11
-or newer and a Qt-capable desktop should work.
-
-Everything installs into your home folder. Nothing is written to `/usr`, nothing
-asks for root, and no system packages are touched — which is what makes it safe
-on Bazzite and other image-based systems where `/usr` is read-only.
-
-```bash
-git clone https://github.com/kamsiob/dig.git
+```
+git clone https://github.com/Kamsiob/dig.git
 cd dig
 ./install.sh
 ```
 
-That creates a virtual environment, installs the pinned dependencies, puts a
-`dig` launcher in `~/.local/bin`, and registers the icon and menu entry. Then
-launch Dig from your application menu, or run `dig`.
+That creates a virtual environment (reusing a system PySide6 if there is one),
+installs the icon and the launcher, and puts a `dig` command on your PATH. Then
+launch Dig from your applications menu, or run `dig`.
 
-To run it from a checkout without installing:
-
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python app.py
-```
-
-To remove it:
-
-```bash
-./uninstall.sh
-```
-
-Uninstalling deliberately leaves your data alone. It prints the folder so you can
-delete it yourself if you want the ideas gone too.
+`./uninstall.sh` removes the launcher, the icons, and the command. It never
+touches your data.
 
 ## Keyboard
 
-| Key | What it does |
+| | |
 |---|---|
-| `1` – `5` | Home, Ideas, Apps, Export, Settings |
-| `Ctrl K` | Capture a feature or bug against an app, from any screen |
-| `Enter` | Keep the jot, commit a sheet line, or save the capture |
-| `Shift Enter` | New line inside a jot |
-| `Esc` | Clear the search, cancel an inline add, close a dialog |
-| `Tab` | Move through everything; every focus state is visible |
-
-On Home the jot field holds focus, so a number key typed there is a number, not a
-jump. Capturing the thought is the point of that screen.
-
-A system-wide hotkey is deliberately not attempted: an in-app global key grab does
-not work on Wayland. Bind `dig` to a KDE custom shortcut if you want one.
+| Add something | <kbd>Ctrl</kbd> <kbd>K</kbd> |
+| Find anything | <kbd>/</kbd> |
+| Home | <kbd>1</kbd> |
+| Projects | <kbd>2</kbd> |
+| Roadmap | <kbd>3</kbd> |
+| Ideas | <kbd>4</kbd> |
+| Library | <kbd>5</kbd> |
+| Your week | <kbd>6</kbd> |
+| Close anything | <kbd>Esc</kbd> |
+| Shortcuts | <kbd>?</kbd> |
 
 ## Your data
 
-Everything lives in `~/.local/share/dig`:
+Everything lives in `~/.local/share/dig`: one SQLite file, the files you have
+added, and a rolling set of recent saves for recovery. Export the whole thing as
+JSON at any time from Settings, and bring it back the same way.
 
-```
-dig.db              your ideas, apps, sheets and settings
-attachments/<id>/   the files you attached, copied in
-```
+Dig follows your desktop's light or dark setting, and its reduce motion setting.
 
-Attachments are copied into that folder on attach, never referenced where they
-sit, so moving or deleting the original leaves Dig intact. Deleting an attachment
-deletes the stored copy with it, and deleting an app takes its folder too.
+## Built by one person
 
-If the database is ever unreadable, Dig sets it aside as
-`dig.db.broken-{timestamp}`, starts a fresh one, and tells you plainly. Nothing is
-deleted.
+Dig is made and carried by [Kamsiob](https://kamsiob.com).
 
-The only thing that ever leaves is a PDF you asked for, written where you chose.
+[YouTube](https://youtube.com/@kamsiob) ·
+[GitHub](https://github.com/kamsiob) ·
+[Website](https://kamsiob.com) ·
+[Telegram](https://t.me/+g5LKm9rUnNcxMjk5) ·
+[hello@kamsiob.com](mailto:hello@kamsiob.com)
 
-## Built with
-
-PySide6 and reportlab, both pinned in `requirements.txt`.
-
-Fonts are bundled, not fetched: **Fraunces**, **IBM Plex Sans** and **IBM Plex
-Mono**, all under the SIL Open Font License (see `fonts/OFL-*.txt`). They ship as
-static instances cut by `scripts/build_fonts.py`, because Qt loads a variable font
-at its default axis position and never varies it.
-
-`DESIGN.md` is the design authority and `design/dig-design.html` is the reference
-mockup. Both are in the repo.
-
-## Tests
-
-```bash
-.venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest
-```
-
-209 tests, including a scripted end-to-end run that drives the real window
-through a week of use: jotting, restarting, promoting, capturing, attaching,
-exporting, theming, deleting, and recovering from a corrupted database.
-
-## Kamsiob
-
-- **YouTube** · [Kamsiob on Linux](https://youtube.com/@kamsiob)
-- **GitHub** · [kamsiob](https://github.com/kamsiob)
-- **Website** · [kamsiob.com](https://kamsiob.com)
-- **Telegram** · [Kamsiob Lab](https://t.me/+g5LKm9rUnNcxMjk5)
-- **Feedback** · [hello@kamsiob.com](mailto:hello@kamsiob.com)
-
-Dig is free, and it stays free. If it earns its place on your machine you can
-[buy me a coffee](https://buymeacoffee.com/kamsiob) — that is the only money link
-in the whole app, and it lives in the About dialog.
+If software made this way matters to you, there is
+[a place to stand behind it](https://buymeacoffee.com/kamsiob). Either way, it
+is yours.
 
 ## License
 
-AGPLv3 — see [LICENSE](LICENSE). Free and open source. Everything stays on your
-machine.
+AGPLv3. See [LICENSE](LICENSE). Free and open source.

@@ -18,7 +18,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("DIG_REDUCE_MOTION", "0")
 
-from dig.storage import StateStore  # noqa: E402
+from dig.store import Store  # noqa: E402
 
 
 @pytest.fixture()
@@ -30,8 +30,8 @@ def data_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
-def store(data_dir: Path) -> StateStore:
-    return StateStore(data_dir / "dig.db", data_dir / "history")
+def store(data_dir: Path) -> Store:
+    return Store(data_dir / "dig.db", data_dir / "history")
 
 
 @pytest.fixture(scope="session")

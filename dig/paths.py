@@ -41,13 +41,23 @@ def history_dir() -> Path:
 
 
 def attachments_dir() -> Path:
-    """Root of the managed attachment store."""
+    """Where Dig v1 kept attachments. Only the migration looks here now."""
     return data_dir() / "attachments"
 
 
 def project_attachments_dir(project_id: str) -> Path:
-    """The managed attachment folder for one project."""
+    """The v1 style attachment folder for one project."""
     return attachments_dir() / str(project_id)
+
+
+def blobs_dir() -> Path:
+    """Every file Dig holds, stored once each, addressed by its SHA256."""
+    return data_dir() / "blobs"
+
+
+def backups_dir() -> Path:
+    """Where a full backup lands when no other place is chosen."""
+    return data_dir() / "backups"
 
 
 def ensure_data_dirs() -> Path:
@@ -55,7 +65,7 @@ def ensure_data_dirs() -> Path:
     root = data_dir()
     root.mkdir(parents=True, exist_ok=True)
     history_dir().mkdir(parents=True, exist_ok=True)
-    attachments_dir().mkdir(parents=True, exist_ok=True)
+    blobs_dir().mkdir(parents=True, exist_ok=True)
     return root
 
 

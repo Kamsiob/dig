@@ -1,9 +1,10 @@
 # v1 to v2 migration
 
 Dig v1 stored a normalized SQLite database: ideas, apps, per-app feature and bug
-sheets, and managed attachments. Dig v2 stores one JSON state document in a
-single-row `state` table. This document describes exactly how the old data
-becomes the new data.
+sheets, and managed attachments. Dig v2 stores one record per thing across a
+table per collection, with an append only log of every change, and keeps files
+by their SHA256 in a blob store. This document describes exactly how the old
+data becomes the new data.
 
 The migration runs once, on first launch, when a v1 database is found at
 `~/.local/share/dig/dig.db`. The original file is kept as
@@ -11,9 +12,8 @@ The migration runs once, on first launch, when a v1 database is found at
 
 ## How v1 is recognized
 
-A v1 database has a `settings` table with `schema_version` and an `apps` table,
-and no `state` table. A v2 database has a `state` table. If both are somehow
-present, the `state` table wins and no migration runs.
+A v1 database has an `apps` table and no `projects` table. A v2 database has a
+`projects` table. If both are somehow present, v2 wins and no migration runs.
 
 ## What maps to what
 
@@ -23,7 +23,7 @@ present, the `state` table wins and no migration runs.
 |---|---|
 | `settings.appearance` (`light` / `dark` / `system`) | `state.theme` |
 | `settings.window_geometry` (Qt base64 blob) | dropped; v2 stores `ui.window` as plain numbers |
-| `settings.schema_version` | dropped; v2 tracks `schema_version` on the `state` row |
+| `settings.schema_version` | dropped; v2 keeps its own `schema_version` in `meta` |
 
 `state.org` is set to the machine's full name if one is readable, otherwise
 `"Your projects"`. `state.you` is set to the first word of that name. Both are
@@ -123,24 +123,28 @@ clicks a stage's suggested item into existence.
 
 ### Attachments become files
 
-Each `attachments` row becomes one entry in that project's `files[]`:
+v2 keeps files by what they are rather than by what they are called: every file
+is hashed and stored once under `~/.local/share/dig/blobs/` by its SHA256, and a
+file record points at that hash. Two records holding the same bytes cost one
+copy, and renaming a file or moving it between projects never touches the bytes.
+
+Each v1 `attachments` row becomes one file record:
 
 | v1 column | v2 field |
 |---|---|
 | `filename` | `name` |
-| `stored_path` | `stored_path` |
-| `size` | rendered into `meta` as a human size, for example `2.4 MB` |
-| `added_at` | rendered into `meta` after the size, for example `2.4 MB · Aug 30` |
+| `stored_path` | read, hashed, and copied into the blob store; the record keeps `sha256` |
+| `size` | `size`, re-measured from the bytes that were actually copied |
+| `added_at` | `added_at` |
 
 `type` is the file's extension in upper case, capped at four characters, which is
-what the file type chip shows. A file with no extension gets `FILE`.
+what the file type chip shows. A file with no extension gets `FILE`. `mime` is
+detected from the name.
 
-The bytes themselves move too: v1 stored them under
-`~/.local/share/dig/attachments/{app_id}/`, v2 stores them under
-`~/.local/share/dig/attachments/{project_id}/`. Each app's folder is renamed to
-its new project ID and `stored_path` is rewritten to match. A file that is missing
-on disk is still listed, so nothing silently disappears; opening it reports that
-it is gone.
+v1's `~/.local/share/dig/attachments/` folder is **left exactly as it was**. The
+bytes are copied, never moved, so a migration that goes wrong cannot cost anyone
+a file. A v1 record whose file is already missing from disk still becomes a
+record, with an empty hash, so nothing silently disappears.
 
 ### Everything with no v1 equivalent
 
@@ -149,10 +153,18 @@ start empty. v1 recorded no decisions, waits, releases beyond `version_label`,
 people, or stage history, so none are invented. The week report on a freshly
 migrated install correctly says nothing happened.
 
+### The database itself
+
+v1's tables carry some of the same names as v2's with a different shape, so the
+v2 database is not built on top of the v1 file. The original is copied to
+`dig-v1.db.bak` first, then `dig.db` is replaced by a fresh v2 database. If
+anything fails after that point, the backup is copied back so the next launch
+can try again.
+
 ## After the migration
 
-The new state is written through the normal atomic save path, so the first
-history snapshot is the migrated state. A toast confirms in plain words what came
+The new state is written through the normal save path, so the first history
+snapshot is the migrated state. A toast confirms in plain words what came
 across, for example: "Brought 1 app and 0 ideas over from Dig v1. The old file is
 kept as dig-v1.db.bak."
 

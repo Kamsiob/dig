@@ -32,7 +32,7 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QFileDialog
 
 from dig import __app_name__, __version__, paths
-from dig.storage import LoadResult, StateStore
+from dig.store import BlobStore, LoadResult, Store
 
 SAVE_DEBOUNCE_MS = 300
 
@@ -117,9 +117,42 @@ def file_chip(name: str) -> str:
     return suffix[:4]
 
 
+def _inside_digs_own(path: Path) -> bool:
+    """Whether a path is one of Dig's own files, rather than anything at all."""
+    roots = (paths.blobs_dir(), paths.attachments_dir(), paths.history_dir())
+    for root in roots:
+        try:
+            path.relative_to(root.resolve())
+            return True
+        except (ValueError, OSError):
+            continue
+    return False
+
+
+def _looks_like_dig(state) -> bool:
+    """Whether a file is shaped like a document Dig wrote."""
+    if not isinstance(state, dict):
+        return False
+    for key in ("groups", "types", "projects", "ideas", "inbox", "library", "activity"):
+        if key in state and not isinstance(state[key], list):
+            return False
+    if "projects" not in state:
+        return False
+    for project in state["projects"]:
+        if not isinstance(project, dict) or not project.get("id"):
+            return False
+    return True
+
+
+def safe_id(value: str) -> str:
+    """An id that can only ever name a folder, never a path."""
+    cleaned = "".join(c for c in str(value or "") if c.isalnum() or c in "-_")
+    return cleaned[:64] or "loose"
+
+
 def copy_into_attachments(source: Path, project_id: str) -> Path:
     """Copy a file into this project's folder, never overwriting a neighbor."""
-    folder = paths.project_attachments_dir(project_id)
+    folder = paths.project_attachments_dir(safe_id(project_id))
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / source.name
     if target.exists():
@@ -178,8 +211,9 @@ class Bridge(QObject):
     themeChanged = Signal(str)
     motionChanged = Signal(bool)
     pdfDone = Signal(str)
+    saveFailed = Signal(str)
 
-    def __init__(self, store: StateStore, window=None) -> None:
+    def __init__(self, store: Store, window=None) -> None:
         super().__init__()
         self._store = store
         self._window = window
@@ -187,6 +221,9 @@ class Bridge(QObject):
         self._first_load: LoadResult | None = None
         self._pdf_pages: list = []
         self._pdf_prof = None
+        self._save_broken = False
+        self._motion = read_reduce_motion()
+        self.blobs = BlobStore(paths.blobs_dir())
 
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -199,6 +236,10 @@ class Bridge(QObject):
 
     # ------------------------------------------------------------- lifecycle
 
+    @property
+    def store(self):
+        return self._store
+
     def attach_window(self, window) -> None:
         """Give the bridge the window whose geometry it stamps into saves."""
         self._window = window
@@ -206,6 +247,10 @@ class Bridge(QObject):
     def prime(self, result: LoadResult) -> None:
         """Hand the bridge the state that was read before the window opened."""
         self._first_load = result
+
+    def has_pending(self) -> bool:
+        """Whether the interface has handed over a change not yet written."""
+        return self._pending is not None
 
     def flush(self) -> None:
         """Write anything still waiting. Called before the window closes."""
@@ -218,9 +263,19 @@ class Bridge(QObject):
         if payload is None:
             return
         try:
-            self._store.save(self._with_geometry(payload))
+            self._store.save_state(json.loads(self._with_geometry(payload)))
+            if self._save_broken:
+                self._save_broken = False
+                self.saveFailed.emit("")
         except Exception as exc:  # a failed save must never take the app down
             print(f"{__app_name__}: could not save: {exc}", flush=True)
+            self._pending = payload  # hold it; the next attempt may get through
+            if not self._save_broken:
+                self._save_broken = True
+                self.saveFailed.emit(
+                    "Dig is not able to write to "
+                    f"{paths.db_path()}. Your changes are only in this window."
+                )
 
     def _with_geometry(self, payload: str) -> str:
         """Stamp the window's size and place into the document as it is written.
@@ -262,6 +317,8 @@ class Bridge(QObject):
                 "reduceMotion": read_reduce_motion(),
                 "dataPath": str(paths.db_path()),
                 "version": __version__,
+                "device": result.meta.get("device_name", ""),
+                "schema": result.meta.get("schema_version", 0),
             }
         )
 
@@ -285,7 +342,19 @@ class Bridge(QObject):
 
     @Slot(result=bool)
     def reduceMotion(self) -> bool:
-        return read_reduce_motion()
+        self._motion = read_reduce_motion()
+        return self._motion
+
+    def recheck_motion(self) -> None:
+        """Re-read the desktop's reduce-motion setting and tell the interface.
+
+        Called when the window is activated, which is when someone coming back
+        from their system settings would expect to see it take effect.
+        """
+        current = read_reduce_motion()
+        if current != self._motion:
+            self._motion = current
+            self.motionChanged.emit(current)
 
     # ------------------------------------------------------------- the world
 
@@ -299,9 +368,12 @@ class Bridge(QObject):
 
     @Slot(str, result=bool)
     def openPath(self, raw: str) -> bool:
-        """Open a file that Dig is keeping. Returns false when it is gone."""
-        path = Path(raw or "").expanduser()
-        if not path.exists():
+        """Open a file Dig is keeping. Only ever one of Dig's own."""
+        try:
+            path = Path(raw or "").expanduser().resolve()
+        except OSError:
+            return False
+        if not path.is_file() or not _inside_digs_own(path):
             return False
         return QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
@@ -332,8 +404,10 @@ class Bridge(QObject):
         source = Path(chosen)
         try:
             stored = copy_into_attachments(source, project_id or "loose")
-        except OSError as exc:
-            return json.dumps({"ok": False, "reason": str(exc)})
+        except (OSError, ValueError):
+            return json.dumps(
+                {"ok": False, "reason": "Dig could not keep a copy of that file."}
+            )
 
         size = stored.stat().st_size
         return json.dumps(
@@ -364,8 +438,14 @@ class Bridge(QObject):
         try:
             state = json.loads(payload)
             target.write_text(json.dumps(state, indent=2), encoding="utf-8")
-        except (OSError, ValueError) as exc:
-            return json.dumps({"ok": False, "reason": str(exc)})
+        except OSError:
+            return json.dumps(
+                {"ok": False, "reason": "Dig could not write there. Pick another folder."}
+            )
+        except ValueError:
+            return json.dumps(
+                {"ok": False, "reason": "Dig could not put that together to export."}
+            )
         return json.dumps({"ok": True, "path": str(target), "name": target.name})
 
     @Slot(result=str)
@@ -386,7 +466,7 @@ class Bridge(QObject):
             return json.dumps(
                 {"ok": False, "reason": "That file is not something Dig wrote."}
             )
-        if not isinstance(state, dict) or "projects" not in state:
+        if not _looks_like_dig(state):
             return json.dumps(
                 {"ok": False, "reason": "That file is not something Dig wrote."}
             )
@@ -449,7 +529,10 @@ class Bridge(QObject):
 
         def finished(ok: bool) -> None:
             if not ok:
-                self._pdf_finish(page, json.dumps({"ok": False, "reason": "render"}))
+                self._pdf_finish(
+                    page,
+                    json.dumps({"ok": False, "reason": "Dig could not lay the PDF out."}),
+                )
                 return
             self._await_fonts(page, 0, lambda: self._do_print(page, target, layout))
 
@@ -475,13 +558,16 @@ class Bridge(QObject):
 
     def _do_print(self, page, target: Path, layout) -> None:
         def written(data) -> None:
-            payload = {"ok": False, "reason": "nothing came back"}
+            payload = {"ok": False, "reason": "Dig could not lay the PDF out."}
             if data:
                 try:
                     target.write_bytes(bytes(data))
                     payload = {"ok": True, "path": str(target), "name": target.name}
-                except OSError as exc:
-                    payload = {"ok": False, "reason": str(exc)}
+                except OSError:
+                    payload = {
+                        "ok": False,
+                        "reason": "Dig could not write there. Pick another folder.",
+                    }
             self._pdf_finish(page, json.dumps(payload))
 
         page.printToPdf(written, layout)

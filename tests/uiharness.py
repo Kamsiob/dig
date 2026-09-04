@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog
 
 from dig import paths
 from dig.bridge import Bridge
-from dig.storage import StateStore
+from dig.store import Store
 from dig.window import MainWindow
 
 READY_TIMEOUT_MS = 20000
@@ -35,7 +35,7 @@ class UI:
         self.size = size
         self.window: MainWindow | None = None
         self.bridge: Bridge | None = None
-        self.store: StateStore | None = None
+        self.store: Store | None = None
         self.console: list[str] = []
         self.opens: list[str] = []
         self.saves: list[str] = []
@@ -45,14 +45,11 @@ class UI:
 
     def start(self) -> "UI":
         paths.ensure_data_dirs()
-        self.store = StateStore(paths.db_path(), paths.history_dir())
+        self.store = Store(paths.db_path(), paths.history_dir())
 
-        from dig.migrate_v1 import migrate_if_needed
+        from dig.startup import open_state
 
-        notice = migrate_if_needed(self.store)
-        result = self.store.load()
-        if notice and not result.notice:
-            result.notice = notice
+        result = open_state(self.store)
 
         self.bridge = Bridge(self.store)
         self.window = MainWindow(self.bridge)
@@ -89,14 +86,18 @@ class UI:
         return self.start()
 
     def close(self) -> None:
+        """Close the way a person does, and wait for the window to actually go."""
         if self.window is None:
             return
-        self.raw("window.flushSave&&window.flushSave();1")
-        pump(120)
+        window = self.window
+        window.close()
+        for _ in range(30):
+            pump(30)
+            if not window.isVisible():
+                break
         self.bridge.flush()
-        self.window.close()
-        self.window.deleteLater()
         self.window = None
+        window.deleteLater()
         pump(150)
 
     # ------------------------------------------------------------ javascript

@@ -8,16 +8,20 @@
 
 var DAY=86400000;
 /* The prototype froze the clock at 2026-09-04T14:00 so its sample data would
-   read well. The app reads the real one. Every use of NOW below is untouched. */
-Object.defineProperty(window,'NOW',{get:function(){return new Date()}});
-function d(daysAgo){return new Date(NOW-daysAgo*DAY)}
+   read well. The app reads the real one. Every use of NOW below is untouched.
+   It stays configurable so the fidelity pass can freeze it to the prototype's
+   instant and compare the two side by side. */
+Object.defineProperty(window,'NOW',{get:function(){return new Date()},configurable:true});
 
 var S=null,BRIDGE=null,READY=false,SYS_THEME='light',DATA_PATH='',VERSION='';
 
-/* IDs have to stay unique across sessions now that state is kept, so the
-   prototype's counter, which restarted at 100 on every reload, is replaced. */
-var _u=0;
-function uid(){_u++;return 'x'+Date.now().toString(36)+_u.toString(36)}
+/* Every record needs an id that is unique across every device, not just this
+   session, so the prototype's counter, which restarted at 100 on every reload,
+   is replaced by a UUID made here on whichever device creates the record. */
+function uid(){
+  if(window.crypto&&crypto.randomUUID)return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
+    var r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16)})}
 
 /* The stages, checklists, groups, and colors the setup screen creates. */
 var SETUP_TYPES={
@@ -47,8 +51,20 @@ function blank(){return{org:'',you:'',theme:'system',setupDone:false,
 /* Dates travel as ISO strings and come back as Dates, at the exact places the
    data model puts them. Nothing guesses at what a date looks like. */
 function reDate(v){return v==null?null:(v instanceof Date?v:new Date(v))}
+function S_hasType(s,id){return !!id&&s.types.some(function(t){return t.id===id})}
 function revive(s){
+  /* A document that came from somewhere else may be missing whole lists.
+     Nothing below should have to wonder whether it got an array. */
+  ['groups','types','projects','ideas','inbox','library','activity'].forEach(function(k){
+    if(!Array.isArray(s[k]))s[k]=[]});
+  s.types.forEach(function(t){
+    if(!Array.isArray(t.stages)||!t.stages.length)t.stages=['Planned','Done'];
+    if(!t.check||typeof t.check!=='object')t.check={}});
+  s.projects=s.projects.filter(function(p){return p&&p.id});
   s.projects.forEach(function(p){
+    if(!S_hasType(s,p.type))p.type=(s.types[0]||{}).id||'';
+    p.stage=Math.max(0,Math.min(parseInt(p.stage,10)||0,
+      ((s.types.find(function(t){return t.id===p.type})||{stages:['Planned','Done']}).stages.length-1)));
     p.items=p.items||[];p.decisions=p.decisions||[];p.files=p.files||[];p.links=p.links||[];
     p.releases=p.releases||[];p.people=p.people||[];p.hist=p.hist||[];p.waitHist=p.waitHist||[];
     p.enteredAt=reDate(p.enteredAt)||NOW;p.lastAct=reDate(p.lastAct)||p.enteredAt;
@@ -57,6 +73,7 @@ function revive(s){
     p.hist.forEach(function(h){h.from=reDate(h.from);h.to=reDate(h.to)});
     if(p.wait)p.wait.since=reDate(p.wait.since)||NOW;
   });
+  s.ideas=s.ideas.filter(function(x){return x&&x.id});
   s.ideas.forEach(function(x){x.at=reDate(x.at)||NOW;x.opened=reDate(x.opened)});
   s.inbox.forEach(function(x){x.at=reDate(x.at)||NOW});
   s.activity.forEach(function(a){a.at=reDate(a.at)||NOW});
@@ -131,6 +148,7 @@ function start(){
     BRIDGE=channel.objects.bridge;
     BRIDGE.themeChanged.connect(function(t){SYS_THEME=t;if(S&&S.theme==='system')render()});
     BRIDGE.motionChanged.connect(setMotion);
+    BRIDGE.saveFailed.connect(function(msg){stickyToast('save',msg?esc(msg):'')});
     BRIDGE.pdfDone.connect(function(json){
       var r=JSON.parse(json);
       if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast('The PDF did not save. '+esc(r.reason));return}
@@ -153,7 +171,10 @@ function start(){
 
 /* ======================= HELPERS ======================= */
 function G(id){return S.groups.find(function(g){return g.id===id})||{name:'No group',color:'#999',priv:false}}
-function T(id){return S.types.find(function(t){return t.id===id})}
+/* Like G(), T() answers for a type that is not there, so a project whose
+   type was removed shows something rather than taking the screen down. */
+function T(id){return S.types.find(function(t){return t.id===id})||
+  {id:'',name:'No type',stages:['Planned','Done'],check:{}}}
 function Pr(id){return S.projects.find(function(p){return p.id===id})}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function ago(dt){var ms=NOW-dt;var h=ms/3600000;if(h<1)return Math.max(1,Math.round(ms/60000))+' min';if(h<24)return Math.round(h)+' hours';var dd=Math.round(h/24);if(dd===1)return '1 day';if(dd<14)return dd+' days';if(dd<60)return Math.round(dd/7)+' weeks';return Math.round(dd/30)+' months'}
@@ -165,6 +186,14 @@ function isLast(p){return p.stage>=T(p.type).stages.length-1}
 function unmet(p){var t=T(p.type),st=stageName(p),ex=t.check[st]||[];return ex.filter(function(e){var it=p.items.find(function(x){return x.text===e});return !(it&&it.done)})}
 function nextDecNo(){var m=0;S.projects.forEach(function(p){p.decisions.forEach(function(x){if(x.no>m)m=x.no})});return m+1}
 function dno(n){return 'D-'+String(n).padStart(4,'0')}
+/* A toast that stays until whatever it is about stops being true. Passing no
+   message takes it down again. Used when Dig cannot write to the disk, which
+   the person has to be able to see for longer than three seconds. */
+function stickyToast(key,msg){
+  S.toasts=S.toasts.filter(function(t){return t.stick!==key});
+  if(msg)S.toasts.push({id:uid(),msg:msg,stick:key});
+  renderToasts();
+}
 function toast(msg,undo){var id=uid();S.toasts.push({id:id,msg:msg,undo:undo});renderToasts();setTimeout(function(){S.toasts=S.toasts.filter(function(t){return t.id!==id});renderToasts()},3400)}
 function log(p,text,kind){S.activity.unshift({group:p.group,pid:p.id,text:text,at:NOW,kind:kind});p.lastAct=NOW}
 function pickResurf(){var pool=S.ideas.slice().sort(function(a,b){return b.at-a.at}).slice(3).filter(function(x){return x.id!==S.resurfId});if(!pool.length){S.resurfId=null;return}S.resurfId=pool[Math.floor(Math.random()*pool.length)].id}
@@ -425,13 +454,35 @@ function saveIdea(id,q){var x=S.ideas.find(function(y){return y.id===id});x.text
 function delIdea(id){S.ideas=S.ideas.filter(function(y){return y.id!==id});if(S.resurfId===id)pickResurf();closeOv();render();toast('Deleted')}
 function startIdea(id){var x=S.ideas.find(function(y){return y.id===id});openNew(x.group||'',x)}
 /* new project */
-function openNew(gid,from){dlg('<div class="dh2"><h3>'+(from?'Start this idea as a project':'New project')+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>Name</label><input type="text" id="np-n" value="'+esc(from?from.text:'')+'" placeholder="What is it called?"><div class="row2"><div><label>Group</label><select id="np-g">'+S.groups.map(function(g){return '<option value="'+g.id+'" '+(gid===g.id?'selected':'')+'>'+esc(g.name)+'</option>'}).join('')+'</select></div><div><label>Type</label><select id="np-t">'+S.types.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+' · '+t.stages.join(' → ')+'</option>'}).join('')+'</select></div></div><div class="row2"><div><label>First next step</label><input type="text" id="np-x" placeholder="The first thing that moves it forward"></div><div><label>On the roadmap</label><select id="np-w">'+HZ.map(function(h){return '<option value="'+h[0]+'" '+(h[0]==='next'?'selected':'')+'>'+h[1]+'</option>'}).join('')+'</select></div></div><div class="helper">It starts at the first stage of its type. Its group decides whether it can be shared.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="createP('+(from?"'"+from.id+"'":'null')+')">Create</button></div>')}
-function createP(fromId){var n=document.getElementById('np-n').value.trim();if(!n)return;var gid=document.getElementById('np-g').value,tid=document.getElementById('np-t').value;var np={id:uid(),name:n,group:gid,type:tid,stage:0,enteredAt:NOW,when:document.getElementById('np-w').value,next:document.getElementById('np-x').value,items:[],decisions:[],files:[],links:[],notes:'',pub:!G(gid).priv,wait:null,lastAct:NOW,releases:[],people:[],hist:[],quiet:false,origin:null,parked:false,waitHist:[]};if(fromId){var x=S.ideas.find(function(y){return y.id===fromId});np.origin=x.text;np.notes=x.desc;S.ideas=S.ideas.filter(function(y){return y.id!==fromId});if(S.resurfId===fromId)pickResurf()}S.projects.unshift(np);log(np,n+' started','move');closeOv();S.ptab='work';openP(np.id);toast('<b>'+esc(n)+'</b> is a project now')}
+function openNew(gid,from){
+  if(!S.types.length){toast('Add a project type in Settings first. Every project moves through one.');return}
+  dlg('<div class="dh2"><h3>'+(from?'Start this idea as a project':'New project')+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>Name</label><input type="text" id="np-n" value="'+esc(from?from.text:'')+'" placeholder="What is it called?"><div class="row2"><div><label>Group</label><select id="np-g">'+S.groups.map(function(g){return '<option value="'+g.id+'" '+(gid===g.id?'selected':'')+'>'+esc(g.name)+'</option>'}).join('')+'</select></div><div><label>Type</label><select id="np-t">'+S.types.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+' · '+t.stages.join(' → ')+'</option>'}).join('')+'</select></div></div><div class="row2"><div><label>First next step</label><input type="text" id="np-x" placeholder="The first thing that moves it forward"></div><div><label>On the roadmap</label><select id="np-w">'+HZ.map(function(h){return '<option value="'+h[0]+'" '+(h[0]==='next'?'selected':'')+'>'+h[1]+'</option>'}).join('')+'</select></div></div><div class="helper">It starts at the first stage of its type. Its group decides whether it can be shared.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="createP('+(from?"'"+from.id+"'":'null')+')">Create</button></div>')}
+function createP(fromId){var n=document.getElementById('np-n').value.trim();if(!n)return;var gid=document.getElementById('np-g').value,tid=document.getElementById('np-t').value;
+  if(!tid||!S.types.some(function(t){return t.id===tid})){toast('Add a project type in Settings first. Every project moves through one.');return}var np={id:uid(),name:n,group:gid,type:tid,stage:0,enteredAt:NOW,when:document.getElementById('np-w').value,next:document.getElementById('np-x').value,items:[],decisions:[],files:[],links:[],notes:'',pub:!G(gid).priv,wait:null,lastAct:NOW,releases:[],people:[],hist:[],quiet:false,origin:null,parked:false,waitHist:[]};if(fromId){var x=S.ideas.find(function(y){return y.id===fromId});np.origin=x.text;np.notes=x.desc;S.ideas=S.ideas.filter(function(y){return y.id!==fromId});if(S.resurfId===fromId)pickResurf()}S.projects.unshift(np);log(np,n+' started','move');closeOv();S.ptab='work';openP(np.id);toast('<b>'+esc(n)+'</b> is a project now')}
 /* stages */
 function openAdvance(id){var p=Pr(id),ns=nextStage(p),un=unmet(p);dlg('<div class="dh2"><h3>Move '+esc(p.name)+' to '+esc(ns)+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div style="color:var(--ink-2)">You\'ve been in <b>'+esc(stageName(p))+'</b> for '+days(p.enteredAt)+' days.</div>'+(un.length?'<div class="warn">A few things from this stage\'s checklist aren\'t done yet:<ul>'+un.map(function(e){return '<li>'+esc(e)+'</li>'}).join('')+'</ul></div>':'<div class="ok">Everything on this stage\'s checklist is done. Nice.</div>')+'<label>Next step in '+esc(ns)+'</label><input type="text" id="adv-x" placeholder="Optional, but it helps tomorrow-you"></div><div class="foot"><button class="btn" onclick="closeOv()">Not yet</button><button class="btn p" onclick="doAdvance(\''+id+'\')">'+(un.length?'Move anyway':'Move to '+esc(ns))+'</button></div>')}
-function doAdvance(id){var p=Pr(id);p.hist.push({stage:stageName(p),from:p.enteredAt,to:NOW});p.stage++;p.enteredAt=NOW;var nx=document.getElementById('adv-x').value;p.next=nx||'';var shipped=/release|ship|close|done/i.test(stageName(p));log(p,p.name+' moved to '+stageName(p),shipped?'ship':'move');if(isLast(p)){p.quiet=true;p.when='done'}closeOv();render();toast('<b>'+esc(p.name)+'</b> is now in '+esc(stageName(p))+'.',"undoAdvance('"+id+"')")}
-function undoAdvance(id){var p=Pr(id);if(p.stage>0){p.stage--;var h=p.hist.pop();p.enteredAt=h?h.from:d(1);p.quiet=false;S.activity.shift();render();toast('Put back')}}
-function jumpStage(id,i){var p=Pr(id);if(i===p.stage)return;if(i===p.stage+1){openAdvance(id);return}if(i>p.stage)p.hist.push({stage:stageName(p),from:p.enteredAt,to:NOW});p.stage=i;p.enteredAt=NOW;p.quiet=isLast(p);log(p,p.name+' set to '+stageName(p),'move');render();toast('Now in '+esc(stageName(p)))}
+/* What the last stage move changed, so Undo can put back exactly that and
+   nothing else. Without it, Undo removed whichever activity happened to be
+   newest and left the horizon and the next step where the move had put them. */
+var LAST_ADVANCE=null;
+function doAdvance(id){var p=Pr(id);
+  var before={stage:p.stage,enteredAt:p.enteredAt,next:p.next,when:p.when,quiet:p.quiet};
+  p.hist.push({stage:stageName(p),from:p.enteredAt,to:NOW});p.stage++;p.enteredAt=NOW;
+  var nx=document.getElementById('adv-x').value;p.next=nx||'';
+  var shipped=/release|ship|close|done/i.test(stageName(p));
+  log(p,p.name+' moved to '+stageName(p),shipped?'ship':'move');
+  var logged=S.activity[0];
+  if(isLast(p)){p.quiet=true;p.when='done'}
+  LAST_ADVANCE={id:id,before:before,logged:logged};
+  closeOv();render();toast('<b>'+esc(p.name)+'</b> is now in '+esc(stageName(p))+'.',"undoAdvance('"+id+"')")}
+function undoAdvance(id){var p=Pr(id),u=LAST_ADVANCE;
+  if(!p||!u||u.id!==id){toast('That move is no longer the one to put back');return}
+  p.hist.pop();
+  p.stage=u.before.stage;p.enteredAt=u.before.enteredAt;p.next=u.before.next;
+  p.when=u.before.when;p.quiet=u.before.quiet;
+  S.activity=S.activity.filter(function(a){return a!==u.logged});
+  LAST_ADVANCE=null;render();toast('Put back')}
+function jumpStage(id,i){var p=Pr(id);if(i===p.stage)return;if(i===p.stage+1){openAdvance(id);return}if(i>p.stage)p.hist.push({stage:stageName(p),from:p.enteredAt,to:NOW});p.stage=i;p.enteredAt=NOW;p.quiet=isLast(p);if(p.quiet)p.when='done';log(p,p.name+' set to '+stageName(p),'move');render();toast('Now in '+esc(stageName(p)))}
 /* waiting */
 function openWait(id){var p=Pr(id);dlg('<div class="dh2"><h3>What is '+esc(p.name)+' waiting on?</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>Waiting on</label><input type="text" id="w-what" placeholder="A person, a review, a delivery, an answer…"><div class="helper">Dig shows it on Home and counts the days. Nothing will nag you.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="setWait(\''+id+'\')">Mark as waiting</button></div>')}
 function setWait(id){var w=document.getElementById('w-what').value.trim();if(!w)return;var p=Pr(id);p.wait={what:w,since:NOW};p.lastAct=NOW;closeOv();render();toast('Waiting on '+esc(w))}
@@ -465,7 +516,8 @@ function openShare(id){var p=id&&id!=='rm'?Pr(id):null;var pubP=S.projects.filte
 function addGroup(){S.groups.push({id:uid(),name:'New group',color:'#D14A7A',priv:false});render()}
 function delGroup(id){if(S.projects.some(function(p){return p.group===id})){toast('Move its projects to another group first');return}S.groups=S.groups.filter(function(g){return g.id!==id});render()}
 function addType(){S.types.push({id:uid(),name:'New type',stages:['Start','Middle','Done'],check:{}});render()}
-function delType(id){if(S.projects.some(function(p){return p.type===id})){toast('Some projects use this type');return}S.types=S.types.filter(function(t){return t.id!==id});render()}
+function delType(id){if(S.projects.some(function(p){return p.type===id})){toast('Some projects use this type');return}
+  if(S.types.length<=1){toast('Keep at least one project type');return}S.types=S.types.filter(function(t){return t.id!==id});render()}
 function renameStage(tid,i,val){var t=T(tid);var old=t.stages[i];t.stages[i]=val;if(t.check[old]){t.check[val]=t.check[old];delete t.check[old]}render()}
 function delStage(tid,i){var t=T(tid);if(t.stages.length<=2){toast('A type needs at least two stages');return}var n=t.stages[i];t.stages.splice(i,1);delete t.check[n];S.projects.forEach(function(p){if(p.type===tid&&p.stage>=t.stages.length)p.stage=t.stages.length-1});render()}
 function addStage(tid){T(tid).stages.push('New stage');render()}
@@ -478,7 +530,7 @@ var ABOUT_LINKS=[
   ['GitHub','https://github.com/kamsiob','github.com/kamsiob'],
   ['Website','https://kamsiob.com','kamsiob.com'],
   ['Buy Me a Coffee','https://buymeacoffee.com/kamsiob','buymeacoffee.com/kamsiob'],
-  ['Telegram','https://t.me/+g5LKm9rUnNcxMjk5','t.me/kamsiob'],
+  ['Telegram','https://t.me/+g5LKm9rUnNcxMjk5','t.me/+g5LKm9rUnNcxMjk5'],
   ['Feedback','mailto:hello@kamsiob.com','hello@kamsiob.com']];
 var ABOUT_MARK='<svg viewBox="0 0 512 512" width="24" height="24"><g fill="#fff"><rect x="112" y="304" width="76" height="96" rx="26"/><rect x="218" y="216" width="76" height="184" rx="26"/><rect x="324" y="112" width="76" height="288" rx="26"/></g></svg>';
 function openAbout(){
@@ -497,8 +549,13 @@ function openAbout(){
    the light palette, with the bundled Geist. Private groups never appear in an
    overview, and every export says what was left out. */
 function pdfSafe(){return S.projects.filter(function(p){return p.pub&&!G(p.group).priv})}
-function omitted(){var n=S.groups.filter(function(g){return g.priv}).length;
-  return n?n+(n===1?' private group left out':' private groups left out'):'No private groups to leave out'}
+function omitted(){
+  var g=S.groups.filter(function(x){return x.priv}).length;
+  var p=S.projects.filter(function(x){return !x.pub&&!G(x.group).priv}).length;
+  var bits=[];
+  if(g)bits.push(g+(g===1?' private group':' private groups'));
+  if(p)bits.push(p+(p===1?' private project':' private projects'));
+  return bits.length?bits.join(' and ')+' left out':'Nothing was left out'}
 function pdfTop(title,sub){return '<div class="pdf-top"><div><div class="o">'+esc(S.org||'Dig')+'</div><div class="w">'+esc(sub)+'</div></div><div class="w">'+esc(title)+'</div></div>'}
 function pdfFoot(left){return '<div class="pdf-foot"><span>'+left+'</span><span>Made by Dig, on this computer.</span></div>'}
 function slug(s){return String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'dig'}
