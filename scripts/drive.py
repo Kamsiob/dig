@@ -36,6 +36,18 @@ def main() -> int:
     ap.add_argument("--results", default="")
     ap.add_argument("--show", action="store_true", help="use the real display")
     ap.add_argument("--settle", type=int, default=1600, help="ms to wait after load")
+    ap.add_argument(
+        "--open",
+        action="append",
+        default=[],
+        help="answer the next Open dialog with this path, in order",
+    )
+    ap.add_argument(
+        "--save",
+        action="append",
+        default=[],
+        help="answer the next Save dialog with this path, in order",
+    )
     args = ap.parse_args()
 
     os.environ["XDG_DATA_HOME"] = str(Path(args.data).resolve())
@@ -47,12 +59,27 @@ def main() -> int:
     )
 
     from PySide6.QtCore import QTimer
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QFileDialog
 
     from dig import paths
     from dig.bridge import Bridge
     from dig.storage import StateStore
     from dig.window import MainWindow
+
+    # A modal file dialog has nobody to click it, so a run can queue the
+    # answers up front. Nothing in the app changes; only the dialog is stubbed.
+    if args.open or args.save:
+        queued = {"open": list(args.open), "save": list(args.save)}
+
+        def answer(kind):
+            def pick(*_a, **_kw):
+                chosen = queued[kind].pop(0) if queued[kind] else ""
+                return (chosen, "")
+
+            return pick
+
+        QFileDialog.getOpenFileName = staticmethod(answer("open"))
+        QFileDialog.getSaveFileName = staticmethod(answer("save"))
 
     width, height = (int(n) for n in args.size.lower().split("x"))
     plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))

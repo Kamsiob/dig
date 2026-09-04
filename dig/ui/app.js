@@ -131,6 +131,11 @@ function start(){
     BRIDGE=channel.objects.bridge;
     BRIDGE.themeChanged.connect(function(t){SYS_THEME=t;if(S&&S.theme==='system')render()});
     BRIDGE.motionChanged.connect(setMotion);
+    BRIDGE.pdfDone.connect(function(json){
+      var r=JSON.parse(json);
+      if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast('The PDF did not save. '+esc(r.reason));return}
+      toast('Saved <b>'+esc(r.name)+'</b>');
+    });
     BRIDGE.load(function(json){
       var opening=JSON.parse(json);
       SYS_THEME=opening.theme||'light';
@@ -294,7 +299,7 @@ function renderWeek(){
   var waiting=S.projects.filter(function(p){return p.wait&&ids.indexOf(p.group)>=0});var next=S.projects.filter(function(p){return !p.wait&&!p.quiet&&!p.parked&&p.next&&ids.indexOf(p.group)>=0}).slice(0,4);
   var li=function(a){return '<li><i style="background:'+G(a.group).color+'"></i>'+esc(a.text)+'<span class="who">'+esc(G(a.group).name)+'</span></li>'};
   var sec=function(t,arr,alt){return '<h4>'+t+'</h4><ul>'+(arr.length?arr.map(li).join(''):'<div class="none">'+alt+'</div>')+'</ul>'};
-  return '<div class="view"><div class="hd"><div><h1>Your week</h1><div class="sub">Written for you from what actually happened. Nothing is made up. Edit it, then share it.</div></div><div class="r"><button class="btn" onclick="S.publicOnly=!S.publicOnly;render()">'+(pub?'Hiding private groups ✓':'Including private groups')+'</button><button class="btn p" onclick="toast(\'In the real app this saves a PDF.\')">Save as PDF</button></div></div>'+
+  return '<div class="view"><div class="hd"><div><h1>Your week</h1><div class="sub">Written for you from what actually happened. Nothing is made up. Edit it, then share it.</div></div><div class="r"><button class="btn" onclick="S.publicOnly=!S.publicOnly;render()">'+(pub?'Hiding private groups ✓':'Including private groups')+'</button><button class="btn p" onclick="savePdfWeek()">Save as PDF</button></div></div>'+
   '<div class="sheet"><div class="top"><div><div class="o">'+esc(S.org)+'</div><div class="w">Week of '+weekOf()+'</div></div><div class="w">'+(pub?(S.groups.length-gs.length)+' private groups left out':'includes private groups')+'</div></div>'+
   '<div class="kpis"><div class="kpi" style="--kc:var(--green)"><div class="l">Shipped</div><div class="v">'+k('ship').length+'</div></div><div class="kpi" style="--kc:var(--blue)"><div class="l">Moved forward</div><div class="v">'+k('move').length+'</div></div><div class="kpi" style="--kc:var(--teal)"><div class="l">Decisions made</div><div class="v">'+k('decision').length+'</div></div><div class="kpi" style="--kc:var(--amber)"><div class="l">Waiting on others</div><div class="v">'+waiting.length+'</div></div></div>'+
   sec('Shipped',k('ship'),'Nothing shipped this week.')+sec('Moved forward',k('move'),'No stage changes this week.')+sec('Decided',k('decision'),'No decisions recorded this week.')+
@@ -328,10 +333,34 @@ function renderSettings(){
   S.types.map(function(t){return '<div class="box" style="margin-bottom:10px"><div class="srow"><input type="text" value="'+esc(t.name)+'" onchange="T(\''+t.id+'\').name=this.value;render()" style="font-weight:600"><span class="sp"></span><span style="font-size:12px;color:var(--ink-3)">'+S.projects.filter(function(p){return p.type===t.id}).length+' projects</span><span class="del" onclick="delType(\''+t.id+'\')">remove</span></div><div class="stages-ed">'+t.stages.map(function(s,i){return '<span class="stg-chip"><span style="font-family:var(--mono);font-size:10px;color:var(--ink-3)">'+(i+1)+'</span><input value="'+esc(s)+'" onchange="renameStage(\''+t.id+'\','+i+',this.value)"><span class="x" onclick="delStage(\''+t.id+'\','+i+')">✕</span></span>'}).join('')+'<span class="stg-chip add" onclick="addStage(\''+t.id+'\')">+ stage</span></div><div class="exp">'+t.stages.map(function(s){var e=t.check[s]||[];return '<div class="stg-name">'+esc(s)+' checklist suggests</div>'+e.map(function(x,ei){return '<div class="e"><span>· '+esc(x)+'</span><span class="x" onclick="delExp(\''+t.id+'\',\''+esc(s)+'\','+ei+')">remove</span></div>'}).join('')+'<div class="e"><input placeholder="Add something the '+esc(s)+' stage usually needs…" onkeydown="if(event.key===\'Enter\'){addExp(\''+t.id+'\',\''+esc(s)+'\',this.value);this.value=\'\'}"></div>'}).join('')+'</div></div>'}).join('')+
   '<div class="box"><div class="srow"><span class="act" onclick="addType()">+ add a type</span></div></div>'+
   '<h2>Appearance</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Theme</span><div class="theme">'+['light','dark','system'].map(function(m){return '<button class="'+(S.theme===m?'on':'')+'" onclick="setTheme(\''+m+'\')">'+(m==='system'?'Follow system':m[0].toUpperCase()+m.slice(1))+'</button>'}).join('')+'</div></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Motion</span><span>Follows your system\'s reduce-motion setting.</span></div></div>'+
-  '<h2>Your data</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Where it lives</span><span style="font-family:var(--mono);font-size:12px">'+esc(DATA_PATH)+'</span><span class="sp"></span><span class="act" onclick="openDataFolder()">Open folder</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Backup</span><span>Export everything as one file, or bring one back in.</span><span class="sp"></span><span class="act" onclick="exportData()">Export</span><span class="act" onclick="toast(\'Import opens a file picker in the real app\')">Import</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Internet</span><span>Never used. Dig makes no network calls.</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">License</span><span>Free and open source, AGPLv3 · <a style="color:var(--blue);cursor:pointer" onclick="toast(\'About dialog lives here in the real app\')">About Dig</a></span></div></div>'+
+  '<h2>Your data</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Where it lives</span><span style="font-family:var(--mono);font-size:12px">'+esc(DATA_PATH)+'</span><span class="sp"></span><span class="act" onclick="openDataFolder()">Open folder</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Backup</span><span>Export everything as one file, or bring one back in.</span><span class="sp"></span><span class="act" onclick="exportData()">Export</span><span class="act" onclick="importData()">Import</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Internet</span><span>Never used. Dig makes no network calls.</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">License</span><span>Free and open source, AGPLv3 · <a style="color:var(--blue);cursor:pointer" onclick="toast(\'About dialog lives here in the real app\')">About Dig</a></span></div></div>'+
   '</div></div>';
 }
-function exportData(){try{var blob=new Blob([JSON.stringify({org:S.org,groups:S.groups,types:S.types,projects:S.projects,ideas:S.ideas,inbox:S.inbox,library:S.library,activity:S.activity},null,2)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dig-export.json';a.click();toast('Exported dig-export.json')}catch(e){toast('Export runs in the real app')}}
+function exportData(){
+  if(!BRIDGE){toast('Exporting needs the app.');return}
+  flushSave();
+  BRIDGE.exportJson(JSON.stringify(persist()),function(json){
+    var r=JSON.parse(json);
+    if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast(esc(r.reason));return}
+    toast('Exported to <b>'+esc(r.name)+'</b>');
+  });
+}
+var PENDING_IMPORT=null;
+function importData(){
+  if(!BRIDGE){toast('Importing needs the app.');return}
+  BRIDGE.importJson(function(json){
+    var r=JSON.parse(json);
+    if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast(esc(r.reason));return}
+    PENDING_IMPORT=r.state;
+    dlg('<div class="dh2"><h3>Bring this file in?</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div style="font-size:15px;font-weight:500;margin-bottom:4px">'+esc(r.name)+'</div><div class="warn">This replaces everything Dig is holding right now: '+S.projects.length+' projects, '+S.ideas.length+' ideas, '+S.library.length+' in the library.</div><div class="ok">That file holds '+r.counts.projects+' projects, '+r.counts.ideas+' ideas, and '+r.counts.library+' in the library.</div><div class="helper">What is here now stays in the recovery history either way.</div></div><div class="foot"><button class="btn" onclick="PENDING_IMPORT=null;closeOv()">Cancel</button><button class="btn p" onclick="doImport()">Replace everything</button></div>');
+  });
+}
+function doImport(){
+  if(!PENDING_IMPORT)return;
+  S=adopt(PENDING_IMPORT);PENDING_IMPORT=null;
+  pickResurf();closeOv();go('home');flushSave();
+  toast('Brought it in. Everything here is from that file now.');
+}
 
 /* ---- SETUP ---- */
 function renderSetup(){
@@ -413,12 +442,21 @@ function openDec(id){var p=Pr(id);dlg('<div class="dh2"><h3>Record a decision ·
 function recordDecision(pid,text,sup){text=(text||'').trim();if(!text)return;var p=Pr(pid);var no=nextDecNo();var s=sup?parseInt(sup,10):null;if(s){var old=p.decisions.find(function(x){return x.no===s});if(old)old.superseded=true}p.decisions.push({no:no,text:text,at:NOW,supersedes:s,superseded:false});log(p,p.name+': '+dno(no)+' recorded','decision');toast(dno(no)+' recorded')}
 /* links, files, people, releases */
 function addLink(id){dlg('<div class="dh2"><h3>Add a link</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>Address or name</label><input type="text" id="lk" placeholder="github.com/… or Google Play"></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="var t=document.getElementById(\'lk\').value.trim();if(t){Pr(\''+id+'\').links.push(t)};closeOv();render()">Add</button></div>')}
-function addFile(id){dlg('<div class="dh2"><h3>Add a file</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="helper" style="margin:0 0 6px">In the real app this opens a file picker and keeps a copy inside Dig. Here, just name one.</div><label>Name</label><input type="text" id="fn" placeholder="Technical Specification"><div class="row2"><div><label>Type</label><select id="ft"><option>PDF</option><option>MD</option><option>PNG</option><option>SVG</option><option>ZIP</option><option>HTML</option></select></div><div><label>Version or note</label><input type="text" id="fm" placeholder="v1.0"></div></div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="var n=document.getElementById(\'fn\').value.trim();if(n){Pr(\''+id+'\').files.unshift({type:document.getElementById(\'ft\').value,name:n,meta:document.getElementById(\'fm\').value||\'today\'})};closeOv();render()">Add</button></div>')}
+function addFile(id){
+  if(!BRIDGE){toast('Adding a file needs the app.');return}
+  BRIDGE.pickFile(id,'All files (*)',function(json){
+    var r=JSON.parse(json);
+    if(!r.ok){if(r.reason&&r.reason!=='cancelled')toast(esc(r.reason));return}
+    var p=Pr(id);if(!p)return;
+    p.files.unshift({type:r.type,name:r.name,meta:r.meta,stored_path:r.stored_path});
+    p.lastAct=NOW;render();toast('Kept a copy of <b>'+esc(r.name)+'</b>');
+  });
+}
 function addPerson(id){dlg('<div class="dh2"><h3>Add a person</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="row2"><div><label>Name</label><input type="text" id="pn" placeholder="Who"></div><div><label>Role</label><input type="text" id="pr" placeholder="reviewer, client, collaborator"></div></div><div class="helper">Just a name and a role. Dig is not a contact list.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="var n=document.getElementById(\'pn\').value.trim();if(n){Pr(\''+id+'\').people.push({n:n,r:document.getElementById(\'pr\').value})};closeOv();render()">Add</button></div>')}
 function addRelease(id){dlg('<div class="dh2"><h3>Record a release</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="row2"><div><label>Version</label><input type="text" id="rv" placeholder="1.2.0"></div><div><label>What\'s in it</label><input type="text" id="rn" placeholder="One line"></div></div><div class="helper">Dated today. Shows up on the project\'s roadmap and in Your week.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="doRelease(\''+id+'\')">Record</button></div>')}
 function doRelease(id){var v=document.getElementById('rv').value.trim();if(!v)return;var p=Pr(id);p.releases.push({v:v,at:NOW,note:document.getElementById('rn').value});log(p,p.name+' '+v+' released','ship');closeOv();render();toast('<b>'+esc(p.name)+' '+esc(v)+'</b> is on the record')}
 /* share */
-function openShare(id){var p=id&&id!=='rm'?Pr(id):null;var pubP=S.projects.filter(function(y){return y.pub&&!G(y.group).priv});var isRm=id==='rm';dlg('<div class="dh2"><h3>'+(p?'Share '+esc(p.name):(isRm?'Share the roadmap':'Share your projects'))+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="share-prev">'+(p?'<div class="h">'+esc(p.name)+'</div><div class="s">'+esc(T(p.type).name)+' · '+esc(G(p.group).name)+' · '+esc(stageName(p))+'</div><div class="row3"><div><b>'+(p.stage+1)+' of '+T(p.type).stages.length+'</b><small>stages</small></div><div><b>'+p.items.filter(function(x){return x.done}).length+'</b><small>done</small></div><div><b>'+p.releases.length+'</b><small>releases</small></div></div><div style="color:var(--ink-2)">'+(esc(p.notes)||'No notes yet.')+'</div>':'<div class="h">'+esc(S.org)+(isRm?' · Roadmap':'')+'</div><div class="s">'+pubP.length+' shareable projects · '+S.groups.filter(function(g){return g.priv}).length+' private groups left out</div><div class="row3">'+(isRm?HZ.slice(0,3).map(function(h){return '<div><b>'+pubP.filter(function(y){return (y.when||'later')===h[0]}).length+'</b><small>'+h[1]+'</small></div>'}).join(''):'<div><b>'+S.projects.filter(function(y){return !y.quiet&&!y.parked}).length+'</b><small>active</small></div><div><b>'+S.activity.filter(function(a){return a.kind==='ship'&&days(a.at)<=90}).length+'</b><small>shipped this quarter</small></div><div><b>'+S.projects.reduce(function(s,y){return s+y.decisions.length},0)+'</b><small>decisions on record</small></div>')+'</div><div style="color:var(--ink-2)">Private groups never appear here. The page says so at the bottom.</div>')+'</div></div><div class="foot"><span class="l">Saves a PDF or an image, made on this computer.</span><button class="btn" onclick="closeOv()">Close</button><button class="btn p" onclick="closeOv();toast(\'In the real app this saves the file.\')">Save</button></div>')}
+function openShare(id){var p=id&&id!=='rm'?Pr(id):null;var pubP=S.projects.filter(function(y){return y.pub&&!G(y.group).priv});var isRm=id==='rm';dlg('<div class="dh2"><h3>'+(p?'Share '+esc(p.name):(isRm?'Share the roadmap':'Share your projects'))+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="share-prev">'+(p?'<div class="h">'+esc(p.name)+'</div><div class="s">'+esc(T(p.type).name)+' · '+esc(G(p.group).name)+' · '+esc(stageName(p))+'</div><div class="row3"><div><b>'+(p.stage+1)+' of '+T(p.type).stages.length+'</b><small>stages</small></div><div><b>'+p.items.filter(function(x){return x.done}).length+'</b><small>done</small></div><div><b>'+p.releases.length+'</b><small>releases</small></div></div><div style="color:var(--ink-2)">'+(esc(p.notes)||'No notes yet.')+'</div>':'<div class="h">'+esc(S.org)+(isRm?' · Roadmap':'')+'</div><div class="s">'+pubP.length+' shareable projects · '+S.groups.filter(function(g){return g.priv}).length+' private groups left out</div><div class="row3">'+(isRm?HZ.slice(0,3).map(function(h){return '<div><b>'+pubP.filter(function(y){return (y.when||'later')===h[0]}).length+'</b><small>'+h[1]+'</small></div>'}).join(''):'<div><b>'+S.projects.filter(function(y){return !y.quiet&&!y.parked}).length+'</b><small>active</small></div><div><b>'+S.activity.filter(function(a){return a.kind==='ship'&&days(a.at)<=90}).length+'</b><small>shipped this quarter</small></div><div><b>'+S.projects.reduce(function(s,y){return s+y.decisions.length},0)+'</b><small>decisions on record</small></div>')+'</div><div style="color:var(--ink-2)">Private groups never appear here. The page says so at the bottom.</div>')+'</div></div><div class="foot"><span class="l">Saves a PDF or an image, made on this computer.</span><button class="btn" onclick="closeOv()">Close</button><button class="btn p" onclick="doShare('+(id?jsq(id):'null')+')">Save</button></div>')}
 /* settings */
 function addGroup(){S.groups.push({id:uid(),name:'New group',color:'#D14A7A',priv:false});render()}
 function delGroup(id){if(S.projects.some(function(p){return p.group===id})){toast('Move its projects to another group first');return}S.groups=S.groups.filter(function(g){return g.id!==id});render()}
@@ -429,6 +467,66 @@ function delStage(tid,i){var t=T(tid);if(t.stages.length<=2){toast('A type needs
 function addStage(tid){T(tid).stages.push('New stage');render()}
 function addExp(tid,st,val){val=val.trim();if(!val)return;var t=T(tid);(t.check[st]=t.check[st]||[]).push(val);render()}
 function delExp(tid,st,i){T(tid).check[st].splice(i,1);render()}
+
+/* ---- PDF exports ----
+   Rendered by the web engine from the same classes the screen uses, always in
+   the light palette, with the bundled Geist. Private groups never appear in an
+   overview, and every export says what was left out. */
+function pdfSafe(){return S.projects.filter(function(p){return p.pub&&!G(p.group).priv})}
+function omitted(){var n=S.groups.filter(function(g){return g.priv}).length;
+  return n?n+(n===1?' private group left out':' private groups left out'):'No private groups to leave out'}
+function pdfTop(title,sub){return '<div class="pdf-top"><div><div class="o">'+esc(S.org||'Dig')+'</div><div class="w">'+esc(sub)+'</div></div><div class="w">'+esc(title)+'</div></div>'}
+function pdfFoot(left){return '<div class="pdf-foot"><span>'+left+'</span><span>Made by Dig, on this computer.</span></div>'}
+function slug(s){return String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'dig'}
+
+function savePdfWeek(){
+  var el=document.querySelector('.sheet');
+  if(!el){toast('Open Your week first.');return}
+  sendPdf(el.outerHTML,'your-week.pdf');
+}
+function doShare(id){
+  var body,name;
+  if(id&&id!=='rm'){var p=Pr(id);if(!p)return;body=pdfProject(p);name=slug(p.name)+'.pdf'}
+  else if(id==='rm'){body=pdfRoadmap();name='roadmap.pdf'}
+  else{body=pdfProjects();name='projects.pdf'}
+  closeOv();sendPdf(body,name);
+}
+function sendPdf(body,name){
+  if(!BRIDGE){toast('Saving a PDF needs the app.');return}
+  BRIDGE.printPdf(body,name);
+}
+function pdfProject(p){
+  var t=T(p.type),g=G(p.group);
+  var shareable=p.pub&&!g.priv;
+  return '<div style="--gc:'+g.color+'"><div class="share-prev">'+
+    '<div class="h">'+esc(p.name)+'</div>'+
+    '<div class="s">'+esc(t.name)+' · '+esc(g.name)+' · '+esc(stageName(p))+'</div>'+
+    '<div class="row3"><div><b>'+(p.stage+1)+' of '+t.stages.length+'</b><small>stages</small></div>'+
+    '<div><b>'+p.items.filter(function(x){return x.done}).length+'</b><small>done</small></div>'+
+    '<div><b>'+p.releases.length+'</b><small>releases</small></div></div>'+
+    '<div style="margin-top:6px">'+sbar(p)+'<div class="stage-line"><span><b>'+esc(stageName(p))+'</b> · stage '+(p.stage+1)+' of '+t.stages.length+'</span><span>'+(days(p.enteredAt)?days(p.enteredAt)+' days here':'today')+'</span></div></div>'+
+    (p.next?'<h2 class="pdf-h">Next step</h2><div style="color:var(--ink-2)">'+esc(p.next)+'</div>':'')+
+    (p.notes?'<h2 class="pdf-h">Notes</h2><div style="color:var(--ink-2);white-space:pre-wrap">'+esc(p.notes)+'</div>':'')+
+    (p.releases.length?'<h2 class="pdf-h">Releases</h2><div class="box">'+p.releases.slice().reverse().map(function(r){return '<div class="rel"><span class="v">'+esc(r.v)+'</span><span>'+esc(r.note)+'</span><span class="m">'+fmt(r.at)+'</span></div>'}).join('')+'</div>':'')+
+    '</div>'+pdfFoot(shareable?'One project, shared on purpose.':'This project is in a private group. It never appears in a shared overview.')+'</div>';
+}
+function pdfProjects(){
+  var ps=pdfSafe();
+  var groups=S.groups.filter(function(g){return !g.priv&&ps.some(function(p){return p.group===g.id})});
+  return pdfTop('Projects',ps.length+(ps.length===1?' shareable project':' shareable projects'))+
+    (groups.length?groups.map(function(g){var list=ps.filter(function(p){return p.group===g.id});
+      return '<div class="grp" style="--gc:'+g.color+'"><div class="grp-h"><span class="n"><span class="dotc" style="background:'+g.color+'"></span>'+esc(g.name)+'</span><span class="c">'+list.length+'</span></div><div class="cards">'+list.map(card).join('')+'</div></div>'}).join(''):'<div class="box empty"><b>Nothing to share yet</b>Every project you have is in a private group.</div>')+
+    pdfFoot(esc(omitted())+'. Private groups never appear here.');
+}
+function pdfRoadmap(){
+  var ps=pdfSafe().filter(function(p){return !p.quiet});
+  var by=function(h){return ps.filter(function(p){return (p.when||'later')===h&&!isLast(p)})};
+  return pdfTop('Roadmap',ps.length+(ps.length===1?' shareable project':' shareable projects'))+
+    '<div class="rm-sum">'+HZ.map(function(h){return '<div class="rm-k"><span class="sw" style="background:'+h[3]+'"></span><span class="n">'+by(h[0]).length+'</span><span class="l"><b>'+h[1]+'</b>'+h[2]+'</span></div>'}).join('')+'</div>'+
+    '<div class="horizons">'+HZ.map(function(h,i){var list=by(h[0]);
+      return '<div class="hz"><div class="hz-h"><i style="background:'+h[3]+'"></i><span class="n">'+h[1]+'</span><span class="c">'+list.length+'</span><span class="d">'+h[2]+'</span></div>'+(list.length?list.map(function(p){return rcard(p,i)}).join(''):'<div class="empty">Nothing here.</div>')+'</div>'}).join('')+'</div>'+
+    pdfFoot(esc(omitted())+'. Private groups never appear here.');
+}
 
 /* ======================= KEYS ======================= */
 document.addEventListener('keydown',function(e){

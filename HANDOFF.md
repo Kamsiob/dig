@@ -44,7 +44,7 @@ Phases are defined in `docs/handoff-v2/BUILD_PLAN.md`. Do not merge or skip them
 - [x] Phase 0: read, plan, checkpoint
 - [x] Phase 1: shell and bridge
 - [x] Phase 2: move the prototype in
-- [ ] Phase 3: native pieces
+- [x] Phase 3: native pieces
 - [ ] Phase 4: setup defaults and migration
 - [ ] Phase 5: desktop integration
 - [ ] Phase 6: fidelity pass
@@ -113,7 +113,22 @@ system underneath it.
    and are turned back into Date objects at the exact paths the data model names,
    rather than by sniffing every string in the document, so a note that happens to
    read like a date is left alone.
-15. **The web view is hard-wired to this computer.** A URL request interceptor
+15. **A single project's one pager can be exported even from a private group.**
+   SPEC 4 says private groups never appear in any export. The three overview
+   exports (projects, roadmap, the week sheet) honor that and state the count
+   left out. Sharing one named project is a deliberate act, and the prototype
+   offers Share on every project page, so it exports, with a footer that says
+   "This project is in a private group. It never appears in a shared overview."
+16. **Parked projects still show on the roadmap, under Someday.** SPEC 4 says
+   parking removes a project from Home and the roadmap; the prototype removes it
+   from Home and from the Projects Active filter but keeps it on the roadmap in
+   Someday, which is where parking puts its horizon. The prototype settles
+   questions of behavior, so that is what the app does. One line in
+   `renderRoadmap` changes it if you would rather it disappeared.
+17. **`exportJson` is handed the live document.** SPEC writes it as
+   `exportJson()`. The freshest state lives in the interface, not on disk, so the
+   slot takes the document to write rather than racing the debounced save.
+18. **The web view is hard-wired to this computer.** A URL request interceptor
    refuses every scheme except file, qrc, data, blob, and about, so "no network
    calls" is enforced rather than merely intended. Navigation away from the one
    local document is refused and handed to `openUrl` instead. The context menu is
@@ -122,7 +137,7 @@ system underneath it.
 
 ## Current state
 
-Phase 2 complete. The prototype is the interface.
+Phase 3 complete. Files, export, import, and PDF are real.
 
 `dig/ui/` holds `index.html`, `app.css`, `app.js`, the six Geist weights the
 design calls for (SIL OFL, license alongside them), and the vendored
@@ -137,8 +152,18 @@ toggles, horizon moves, and the theme all survive a restart with dates revived
 as real Date objects.
 
 `scripts/drive.py` starts the real app against a data folder of your choosing
-and walks a JSON plan of steps, recording values and screenshots. The fidelity
-pass, the test suite, and the scripted user pass all run on it.
+and walks a JSON plan of steps, recording values and screenshots. It can queue
+answers for file dialogs with `--open` and `--save`, because a modal dialog has
+nobody to click it in a headless run. The fidelity pass, the test suite, and the
+scripted user pass all run on it.
+
+Phase 3 verified end to end in the running app: a file picker copies into
+`attachments/{project_id}/` with `(2)` style collision suffixes, export writes
+the full document, import reads it back behind a confirmation and refuses a file
+Dig did not write, and all four PDFs render through the web engine in the light
+palette with Geist embedded. The week sheet exports as literally the on screen
+sheet's own markup. The overview exports leave private groups out and say how
+many.
 
 Development environment: `.venv` created with `--system-site-packages` so it
 picks up the system PySide6 6.11.1 rather than downloading a second copy.

@@ -15,9 +15,11 @@ import os
 import re
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import (
+    QMarginsF,
     QObject,
     QStandardPaths,
     Qt,
@@ -27,6 +29,7 @@ from PySide6.QtCore import (
     Slot,
 )
 from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtWidgets import QFileDialog
 
 from dig import __app_name__, __version__, paths
 from dig.storage import LoadResult, StateStore
@@ -129,11 +132,52 @@ def copy_into_attachments(source: Path, project_id: str) -> Path:
     return target
 
 
+# The shell every PDF is rendered into. The light palette regardless of the
+# app's theme, Geist from the bundled files, and no page furniture.
+PDF_SHELL = """<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head><meta charset="utf-8"><title>Dig</title>
+<style>/*APP-CSS*/</style>
+<style>/*PRINT-CSS*/</style>
+</head>
+<body><div class="pdf-doc"><!--BODY--></div></body>
+</html>"""
+
+
+def pdf_document(css: str, body_html: str) -> str:
+    """The full page a PDF is rendered from. Plain replacement, not format:
+    a stylesheet is nothing but braces."""
+    return (
+        PDF_SHELL.replace("/*APP-CSS*/", css)
+        .replace("/*PRINT-CSS*/", PDF_PRINT_CSS)
+        .replace("<!--BODY-->", body_html)
+    )
+
+PDF_PRINT_CSS = """
+@page{size:A4;margin:0}
+html,body{height:auto;overflow:visible;background:#fff}
+body{padding:0;display:block;background:#fff}
+.pdf-doc{padding:0;color:var(--ink)}
+.pdf-doc .sheet{border:none;box-shadow:none;padding:0;max-width:none}
+.pdf-doc h2.pdf-h{font-size:15px;font-weight:600;letter-spacing:-.01em;margin:22px 0 8px}
+.pdf-doc .pdf-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px}
+.pdf-doc .pdf-top .o{font-size:20px;font-weight:600;letter-spacing:-.02em}
+.pdf-doc .pdf-top .w{font-size:12.5px;color:var(--ink-3);margin-top:2px}
+.pdf-doc .pdf-foot{margin-top:22px;padding-top:10px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-3);display:flex;justify-content:space-between;gap:16px}
+.pdf-doc .box{break-inside:avoid}
+.pdf-doc .pc,.pdf-doc .rc{break-inside:avoid}
+.pdf-doc .cards{grid-template-columns:repeat(2,1fr)}
+.pdf-doc .horizons{grid-template-columns:repeat(2,1fr)}
+.pdf-doc *{animation:none!important;transition:none!important}
+"""
+
+
 class Bridge(QObject):
     """Everything the interface asks this computer to do."""
 
     themeChanged = Signal(str)
     motionChanged = Signal(bool)
+    pdfDone = Signal(str)
 
     def __init__(self, store: StateStore, window=None) -> None:
         super().__init__()
@@ -141,6 +185,8 @@ class Bridge(QObject):
         self._window = window
         self._pending: str | None = None
         self._first_load: LoadResult | None = None
+        self._pdf_pages: list = []
+        self._pdf_prof = None
 
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -269,23 +315,192 @@ class Bridge(QObject):
         """Tell the desktop which launcher this window belongs to."""
         QGuiApplication.setDesktopFileName("dig")
 
-    # ------------------------------------------------ filled in from Phase 3
+    # ------------------------------------------------------------------ files
 
     @Slot(str, str, result=str)
     def pickFile(self, project_id: str, file_filter: str) -> str:
-        return json.dumps({"ok": False, "reason": "not wired up yet"})
+        """Choose a file and keep a copy of it inside Dig."""
+        chosen, _ = QFileDialog.getOpenFileName(
+            self._window,
+            "Add a file",
+            str(self.documents_dir()),
+            file_filter or "All files (*)",
+        )
+        if not chosen:
+            return json.dumps({"ok": False, "reason": "cancelled"})
+
+        source = Path(chosen)
+        try:
+            stored = copy_into_attachments(source, project_id or "loose")
+        except OSError as exc:
+            return json.dumps({"ok": False, "reason": str(exc)})
+
+        size = stored.stat().st_size
+        return json.dumps(
+            {
+                "ok": True,
+                "name": stored.name,
+                "type": file_chip(stored.name),
+                "size": size,
+                "meta": f"{human_size(size)} · {datetime.now():%b %-d}",
+                "stored_path": str(stored),
+            }
+        )
+
+    # ------------------------------------------------------ export and import
 
     @Slot(str, result=str)
     def exportJson(self, payload: str) -> str:
-        return json.dumps({"ok": False, "reason": "not wired up yet"})
+        """Write the whole state to a file the person chooses."""
+        default = self.documents_dir() / f"dig-export-{datetime.now():%Y-%m-%d}.json"
+        chosen, _ = QFileDialog.getSaveFileName(
+            self._window, "Export everything", str(default), "JSON file (*.json)"
+        )
+        if not chosen:
+            return json.dumps({"ok": False, "reason": "cancelled"})
+        target = Path(chosen)
+        if not target.suffix:
+            target = target.with_suffix(".json")
+        try:
+            state = json.loads(payload)
+            target.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            return json.dumps({"ok": False, "reason": str(exc)})
+        return json.dumps({"ok": True, "path": str(target), "name": target.name})
 
     @Slot(result=str)
     def importJson(self) -> str:
-        return json.dumps({"ok": False, "reason": "not wired up yet"})
+        """Read a file back in. The interface asks before replacing anything."""
+        chosen, _ = QFileDialog.getOpenFileName(
+            self._window,
+            "Bring a file back in",
+            str(self.documents_dir()),
+            "JSON file (*.json);;All files (*)",
+        )
+        if not chosen:
+            return json.dumps({"ok": False, "reason": "cancelled"})
+        source = Path(chosen)
+        try:
+            state = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return json.dumps(
+                {"ok": False, "reason": "That file is not something Dig wrote."}
+            )
+        if not isinstance(state, dict) or "projects" not in state:
+            return json.dumps(
+                {"ok": False, "reason": "That file is not something Dig wrote."}
+            )
+        counts = {
+            key: len(state.get(key) or [])
+            for key in ("groups", "types", "projects", "ideas", "library")
+        }
+        return json.dumps(
+            {"ok": True, "name": source.name, "counts": counts, "state": state}
+        )
 
-    @Slot(str, str, result=str)
-    def printPdf(self, html: str, suggested_name: str) -> str:
-        return json.dumps({"ok": False, "reason": "not wired up yet"})
+    # -------------------------------------------------------------------- pdf
+
+    @Slot(str, str)
+    def printPdf(self, body_html: str, suggested_name: str) -> str:
+        """Render the given markup to a PDF, in the light palette, with Geist.
+
+        The answer comes back on `pdfDone`, because rendering is not instant.
+        """
+        default = self.documents_dir() / (suggested_name or "dig.pdf")
+        chosen, _ = QFileDialog.getSaveFileName(
+            self._window, "Save as PDF", str(default), "PDF file (*.pdf)"
+        )
+        if not chosen:
+            self.pdfDone.emit(json.dumps({"ok": False, "reason": "cancelled"}))
+            return
+        target = Path(chosen)
+        if not target.suffix:
+            target = target.with_suffix(".pdf")
+        self._render_pdf(body_html, target)
+
+    def _render_pdf(self, body_html: str, target: Path) -> None:
+        from PySide6.QtGui import QPageLayout, QPageSize
+        from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
+
+        css = ""
+        try:
+            css = (paths.ui_dir() / "app.css").read_text(encoding="utf-8")
+        except OSError:
+            pass
+
+        document = pdf_document(css, body_html)
+
+        page = QWebEnginePage(self._pdf_profile(), self)
+        settings = page.settings()
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True
+        )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False
+        )
+        self._pdf_pages.append(page)  # keep it alive until it has finished
+
+        layout = QPageLayout(
+            QPageSize(QPageSize.PageSizeId.A4),
+            QPageLayout.Orientation.Portrait,
+            QMarginsF(12, 12, 12, 12),
+            QPageLayout.Unit.Millimeter,
+        )
+
+        def finished(ok: bool) -> None:
+            if not ok:
+                self._pdf_finish(page, json.dumps({"ok": False, "reason": "render"}))
+                return
+            self._await_fonts(page, 0, lambda: self._do_print(page, target, layout))
+
+        page.loadFinished.connect(finished)
+        page.setHtml(document, QUrl.fromLocalFile(str(paths.ui_dir()) + "/"))
+
+    def _await_fonts(self, page, tries: int, then) -> None:
+        """Give the bundled fonts a moment, so the PDF is never set in a fallback."""
+        if tries == 0:
+            page.runJavaScript(
+                "document.fonts.ready.then(function(){window.__fontsReady=1});0"
+            )
+
+        def check(value) -> None:
+            if value or tries > 30:
+                then()
+            else:
+                QTimer.singleShot(50, lambda: self._await_fonts(page, tries + 1, then))
+
+        QTimer.singleShot(
+            20, lambda: page.runJavaScript("window.__fontsReady||0", check)
+        )
+
+    def _do_print(self, page, target: Path, layout) -> None:
+        def written(data) -> None:
+            payload = {"ok": False, "reason": "nothing came back"}
+            if data:
+                try:
+                    target.write_bytes(bytes(data))
+                    payload = {"ok": True, "path": str(target), "name": target.name}
+                except OSError as exc:
+                    payload = {"ok": False, "reason": str(exc)}
+            self._pdf_finish(page, json.dumps(payload))
+
+        page.printToPdf(written, layout)
+
+    def _pdf_finish(self, page, payload: str) -> None:
+        if page in self._pdf_pages:
+            self._pdf_pages.remove(page)
+        page.deleteLater()
+        self.pdfDone.emit(payload)
+
+    def _pdf_profile(self):
+        from PySide6.QtWebEngineCore import QWebEngineProfile
+
+        if self._pdf_prof is None:
+            profile = QWebEngineProfile(self)  # off the record
+            if self._window is not None:
+                profile.setUrlRequestInterceptor(self._window.interceptor)
+            self._pdf_prof = profile
+        return self._pdf_prof
 
     # --------------------------------------------------------------- helpers
 
