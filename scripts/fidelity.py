@@ -339,8 +339,12 @@ class Page:
 
 
 def pixel_diff(a, b) -> tuple[float, int, tuple]:
-    """Share of pixels that differ, how many of them outside the sidebar, and
-    the box those sit in.
+    """Share of pixels that differ, how many of them outside the sidebar, the
+    box those sit in, and the largest step of any one channel.
+
+    The largest step says whether a difference is a difference. A screen that
+    reports thousands of pixels at a step of two is the same screen drawn a
+    shade differently; one that reports a step of 200 is a different screen.
 
     The sidebar is counted but not located, because Your week became Your
     review and that alone puts a difference on all eighty two screens. What
@@ -354,6 +358,7 @@ def pixel_diff(a, b) -> tuple[float, int, tuple]:
     width, height = a.width(), a.height()
     differing = 0
     body = 0
+    worst = 0
     left, top, right, bottom = width, height, -1, -1
     for y in range(height):
         row_a = bytes(a.constScanLine(y))[: width * 4]
@@ -363,9 +368,11 @@ def pixel_diff(a, b) -> tuple[float, int, tuple]:
         for x in range(0, width * 4, 4):
             if row_a[x : x + 3] == row_b[x : x + 3]:
                 continue
-            if max(abs(row_a[x + n] - row_b[x + n]) for n in range(3)) <= TOLERANCE:
+            step = max(abs(row_a[x + n] - row_b[x + n]) for n in range(3))
+            if step <= TOLERANCE:
                 continue
             differing += 1
+            worst = max(worst, step)
             column = x // 4
             if column >= SIDEBAR_WIDTH:
                 body += 1
@@ -374,7 +381,7 @@ def pixel_diff(a, b) -> tuple[float, int, tuple]:
                 top = min(top, y)
                 bottom = max(bottom, y)
     box = (left, top, right, bottom) if body else ()
-    return (differing * 100.0 / (width * height)), body, box
+    return (differing * 100.0 / (width * height)), body, box, worst
 
 
 def main() -> int:
@@ -478,7 +485,7 @@ def main() -> int:
 
             proto_image = proto.shoot(out / "proto" / f"{label}.png")
             app_image = real.shoot(out / "app" / f"{label}.png")
-            share, count, box = pixel_diff(proto_image, app_image)
+            share, count, box, worst = pixel_diff(proto_image, app_image)
 
             proto_markup = forward(proto.markup())
             app_markup = normalize(real.markup())
@@ -493,6 +500,7 @@ def main() -> int:
                     "pixel_pct": round(share, 4),
                     "pixels": count,
                     "box": list(box),
+                    "worst_step": worst,
                     "markup_identical": same_markup,
                 }
             )
@@ -505,7 +513,7 @@ def main() -> int:
             else:
                 flag = "   <-- LOOK"
             where = (
-                f"  {count} outside the sidebar, in "
+                f"  {count} outside the sidebar, worst {worst} of 255, in "
                 f"{box[0]},{box[1]} to {box[2]},{box[3]}"
                 if box else "  none outside the sidebar"
             )
