@@ -475,6 +475,25 @@ release dialog and one toast still said Your week, the new project dialog
 carried a stray empty div, and the group page's Share button shared every
 project instead of that group.
 
+## Phase 9, packaging
+
+`packaging/build-release.sh` makes the three things a release is: an x86_64
+AppImage, a source tarball taken straight from git so it matches the tag, and
+`SHA256SUMS` with both, checked back before it says it is done.
+
+`packaging/build-appimage.sh` puts the Python interpreter, its library, PySide6,
+Qt 6 including WebEngine, and every shared library the three of them reach for
+into one file, and leaves out only what has to be the host's: the loader, the C
+library, and the graphics drivers. 432 libraries, 303MB, which is what a Qt
+WebEngine application costs. It was run with `env -i` on an empty home folder,
+where it started, made its database, and took a line from a second launch
+through the single instance socket.
+
+The Chromium sandbox is turned off inside the AppImage, and the wrapper says
+why: it needs a setuid helper or user namespaces and an AppImage can promise
+neither. Dig loads one local file and refuses every request that is not already
+on this computer, so there is nothing for that sandbox to contain.
+
 ## Where to pick up
 
 1. **Phase 8**, the scripted user pass, extended as the addendum's Phase 8

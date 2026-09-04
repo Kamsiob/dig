@@ -33,3 +33,4 @@ htmlcov/
 .vscode/
 *.swp
 .DS_Store
+dist/
