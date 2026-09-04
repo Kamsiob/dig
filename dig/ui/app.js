@@ -46,6 +46,7 @@ function blank(){return{org:'',you:'',theme:'system',setupDone:false,
   view:'setup',projectId:null,ptab:'work',filterGroup:'all',sort:'activity',
   ideaSort:'oldest',libFilter:'all',publicOnly:true,resurfId:null,
   capType:'auto',capProject:'',toasts:[],uiWindow:null,
+  obStep:1,obExamples:false,startHere:null,
   setupWork:{apps:false,clients:false,content:false,personal:false,programs:false}}}
 
 /* Dates travel as ISO strings and come back as Dates, at the exact places the
@@ -73,6 +74,8 @@ function revive(s){
     p.hist.forEach(function(h){h.from=reDate(h.from);h.to=reDate(h.to)});
     if(p.wait)p.wait.since=reDate(p.wait.since)||NOW;
   });
+  s.libraryFiles=Array.isArray(s.libraryFiles)?s.libraryFiles:[];
+  s.templates=Array.isArray(s.templates)?s.templates:[];
   s.ideas=s.ideas.filter(function(x){return x&&x.id});
   s.ideas.forEach(function(x){x.at=reDate(x.at)||NOW;x.opened=reDate(x.opened)});
   s.inbox.forEach(function(x){x.at=reDate(x.at)||NOW});
@@ -82,7 +85,8 @@ function revive(s){
 function adopt(saved){
   var s=blank();
   if(!saved)return s;
-  ['org','you','theme','setupDone','groups','types','projects','ideas','inbox','library','activity']
+  ['org','you','theme','setupDone','groups','types','projects','ideas','inbox','library','activity',
+   'libraryFiles','templates','startHere']
     .forEach(function(k){if(saved[k]!==undefined&&saved[k]!==null)s[k]=saved[k]});
   var ui=saved.ui||{};
   ['filterGroup','sort','ideaSort','libFilter','publicOnly','ptab','resurfId']
@@ -95,7 +99,8 @@ function adopt(saved){
    so they are folded in here and spread back out on the way in. */
 function persist(){return{org:S.org,you:S.you,theme:S.theme,setupDone:S.setupDone,
   groups:S.groups,types:S.types,projects:S.projects,ideas:S.ideas,inbox:S.inbox,
-  library:S.library,activity:S.activity,
+  library:S.library,activity:S.activity,libraryFiles:S.libraryFiles||[],
+  templates:S.templates||[],startHere:S.startHere,
   ui:{filterGroup:S.filterGroup,sort:S.sort,ideaSort:S.ideaSort,libFilter:S.libFilter,
       publicOnly:S.publicOnly,ptab:S.ptab,resurfId:S.resurfId,window:S.uiWindow}}}
 
@@ -231,7 +236,7 @@ function renderHome(){
   var upNext=S.projects.filter(function(p){return !p.wait&&!p.quiet&&!p.parked&&p.next}).sort(function(a,b){return days(b.enteredAt)-days(a.enteredAt)}).slice(0,4);
   var r=S.ideas.find(function(x){return x.id===S.resurfId});
   var row=function(p){var g=G(p.group);return '<div class="row click" id="row-'+p.id+'" onclick="openP(\''+p.id+'\')"><span class="dotc" style="background:'+g.color+'"></span><div class="grow"><div class="t">'+esc(p.next)+'</div><div class="m"><b>'+esc(p.name)+'</b> · '+esc(stageName(p))+(days(p.enteredAt)?' for '+days(p.enteredAt)+' days':'')+'</div></div><div class="acts"><button class="btn sm" onclick="event.stopPropagation();doneNext(\''+p.id+'\')">Done ✓</button><button class="btn sm ghost" onclick="event.stopPropagation();openP(\''+p.id+'\')">Open</button></div></div>'};
-  return '<div class="view"><div class="hd"><div><h1>'+greetingLine()+'</h1><div class="sub"><b>'+active.length+'</b> projects active · <b>'+waiting.length+'</b> waiting on someone else · <b>'+S.inbox.length+'</b> in your inbox</div></div><div class="r"><div class="search" onclick="openPal()">Find anything <kbd>/</kbd></div></div></div>'+
+  return '<div class="view">'+startHereCard()+'<div class="hd"><div><h1>'+greetingLine()+'</h1><div class="sub"><b>'+active.length+'</b> projects active · <b>'+waiting.length+'</b> waiting on someone else · <b>'+S.inbox.length+'</b> in your inbox</div></div><div class="r"><div class="search" onclick="openPal()">Find anything <kbd>/</kbd></div></div></div>'+
   '<div class="sec"><div class="sec-t"><h2>'+secIcon('next')+'Up next</h2><span class="help">the next step on each project that\'s been sitting longest</span><a class="rt" onclick="go(\'projects\')">All projects →</a></div><div class="box">'+(upNext.length?upNext.map(row).join(''):'<div class="empty"><div class="gl" style="background:var(--blue-soft);color:var(--blue)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8h9M8.5 4.5L12 8l-3.5 3.5"/></svg></div><b>Nothing lined up</b>Open a project and write its next step.</div>')+'</div></div>'+
   '<div class="sec"><div class="sec-t"><h2>'+secIcon('wait')+'Waiting on someone else</h2><span class="help">days counted, nobody nagged</span></div><div class="box">'+(waiting.length?waiting.map(function(p){return '<div class="row click" id="wrow-'+p.id+'" onclick="openP(\''+p.id+'\')"><span class="waitdot"></span><div class="grow"><div class="t">'+esc(p.wait.what)+'</div><div class="m"><b>'+esc(p.name)+'</b></div></div><span class="badge w">'+days(p.wait.since)+' days</span><button class="btn sm ghost" onclick="event.stopPropagation();resolveWait(\''+p.id+'\')">It arrived</button></div>'}).join(''):'<div class="empty"><div class="gl" style="background:var(--amber-soft);color:var(--amber)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg></div><b>Nothing waiting</b>Everything is in your hands right now.</div>')+'</div></div>'+
   '<div class="sec"><div class="sec-t"><h2>'+secIcon('inbox')+'Inbox</h2><span class="help">things you added quickly, waiting to be put somewhere</span></div><div class="box">'+(S.inbox.length?S.inbox.map(function(u){var gp=u.guess&&Pr(u.guess);return '<div class="row" id="irow-'+u.id+'"><span class="badge '+(u.type==='bug'?'b':(u.type==='link'?'g':'i'))+'">'+u.type+'</span><div class="grow"><div class="t">'+esc(u.text)+'</div><div class="m">'+ago(u.at)+' ago'+(gp?' · looks like <b>'+esc(gp.name)+'</b>':'')+'</div></div><div class="acts">'+(gp?'<button class="btn sm" onclick="quickFile(\''+u.id+'\')">Put in '+esc(gp.name)+'</button>':'')+'<button class="btn sm ghost" onclick="openSort(\''+u.id+'\')">Choose…</button></div></div>'}).join(''):'<div class="empty"><div class="gl" style="background:var(--teal-soft);color:var(--teal)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 9h3l1 2h3l1-2h3V13h-11z"/><path d="M4 9V3.5h8V9"/></svg></div><b>Inbox is empty</b>Press Ctrl K to add something. It lands here if you don\'t say where it goes.</div>')+'</div></div>'+
@@ -292,7 +297,7 @@ function renderProject(){
   ex.forEach(function(e){if(!p.items.find(function(x){return x.text===e})){items='<div class="check" onclick="addExpected(\''+p.id+'\',\''+esc(e)+'\')"><div class="bx" style="border-style:dashed"></div><span class="t" style="color:var(--ink-3)">'+esc(e)+'</span><span class="tg exp">suggested for this stage</span></div>'+items}});
   return head+'<div class="two"><div>'+
   (p.origin?'<div class="box" style="padding:10px 14px;margin-bottom:14px;border-left:3px solid var(--gc)"><div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--gc)">Started as an idea</div><div style="margin-top:3px">"'+esc(p.origin)+'"</div></div>':'')+
-  '<div class="sec"><div class="sec-t"><h2>'+secIcon('next')+'Next step</h2></div><div class="box nextin"><input type="text" value="'+esc(p.next)+'" placeholder="The one thing that moves this forward" onchange="Pr(\''+p.id+'\').next=this.value;scheduleSave();toast(\'Next step saved\')"></div></div>'+
+  '<div class="sec"><div class="sec-t"><h2>'+secIcon('next')+'Next step</h2></div><div class="box nextin"><input type="text" value="'+esc(p.next)+'" placeholder="The one thing that moves this forward" onchange="Pr(\''+p.id+'\').next=this.value;tickStartHere(\'nextStep\');scheduleSave();toast(\'Next step saved\')"></div></div>'+
   '<div class="sec"><div class="sec-t"><h2>'+secIcon('dec')+esc(st)+' checklist</h2><span class="help">what this stage usually needs, plus anything you add</span><a class="rt" onclick="go(\'settings\')">edit the '+esc(t.name)+' template</a></div><div class="box">'+items+'<div class="check add"><div class="bx"></div><input placeholder="Add to the checklist… (start with ! for a bug)" onkeydown="if(event.key===\'Enter\'){addItem(\''+p.id+'\',this.value);this.value=\'\'}"><kbd>↵</kbd></div></div></div>'+
   '<div class="sec"><div class="sec-t"><h2>Notes</h2><span class="help">click to write · saves as you type</span></div><div class="box"><div class="notes-ed" contenteditable="true" oninput="Pr(\''+p.id+'\').notes=this.innerText;scheduleSave()">'+(esc(p.notes)||'<span style="color:var(--ink-3)">Talking points, the demo order, the sentence that matters.</span>')+'</div></div></div>'+
   '</div><aside class="rail">'+
@@ -369,6 +374,9 @@ function renderSettings(){
   '<h2>Project types and their stages</h2><div class="hint">Every project has a type. A type decides which stages it moves through and what each stage\'s checklist suggests.</div>'+
   S.types.map(function(t){return '<div class="box" style="margin-bottom:10px"><div class="srow"><input type="text" value="'+esc(t.name)+'" onchange="T(\''+t.id+'\').name=this.value;render()" style="font-weight:600"><span class="sp"></span><span style="font-size:12px;color:var(--ink-3)">'+S.projects.filter(function(p){return p.type===t.id}).length+' projects</span><span class="del" onclick="delType(\''+t.id+'\')">remove</span></div><div class="stages-ed">'+t.stages.map(function(s,i){return '<span class="stg-chip"><span style="font-family:var(--mono);font-size:10px;color:var(--ink-3)">'+(i+1)+'</span><input value="'+esc(s)+'" onchange="renameStage(\''+t.id+'\','+i+',this.value)"><span class="x" onclick="delStage(\''+t.id+'\','+i+')">✕</span></span>'}).join('')+'<span class="stg-chip add" onclick="addStage(\''+t.id+'\')">+ stage</span></div><div class="exp">'+t.stages.map(function(s){var e=t.check[s]||[];return '<div class="stg-name">'+esc(s)+' checklist suggests</div>'+e.map(function(x,ei){return '<div class="e"><span>· '+esc(x)+'</span><span class="x" onclick="delExp(\''+t.id+'\',\''+esc(s)+'\','+ei+')">remove</span></div>'}).join('')+'<div class="e"><input placeholder="Add something the '+esc(s)+' stage usually needs…" onkeydown="if(event.key===\'Enter\'){addExp(\''+t.id+'\',\''+esc(s)+'\',this.value);this.value=\'\'}"></div>'}).join('')+'</div></div>'}).join('')+
   '<div class="box"><div class="srow"><span class="act" onclick="addType()">+ add a type</span></div></div>'+
+  '<h2>Getting started</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Setup</span><span>Walk through the welcome again. It only adds what is missing.</span><span class="sp"></span><span class="act" onclick="S.obStep=1;go(\'setup\')">Run setup again</span></div>'+
+  (hasExamples()?'<div class="srow"><span style="width:110px;color:var(--ink-3)">Examples</span><span>The example projects, ideas, and notes Dig added so you could look around.</span><span class="sp"></span><span class="act" onclick="removeExamples()">Remove the examples</span></div>':'')+
+  '</div>'+
   '<h2>Appearance</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Theme</span><div class="theme">'+['light','dark','system'].map(function(m){return '<button class="'+(S.theme===m?'on':'')+'" onclick="setTheme(\''+m+'\')">'+(m==='system'?'Follow system':m[0].toUpperCase()+m.slice(1))+'</button>'}).join('')+'</div></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Motion</span><span>Follows your system\'s reduce-motion setting.</span></div></div>'+
   '<h2>Your data</h2><div class="box"><div class="srow"><span style="width:110px;color:var(--ink-3)">Where it lives</span><span style="font-family:var(--mono);font-size:12px">'+esc(DATA_PATH)+'</span><span class="sp"></span><span class="act" onclick="openDataFolder()">Open folder</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Backup</span><span>Export everything as one file, or bring one back in.</span><span class="sp"></span><span class="act" onclick="exportData()">Export</span><span class="act" onclick="importData()">Import</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">Internet</span><span>Never used. Dig makes no network calls.</span></div><div class="srow"><span style="width:110px;color:var(--ink-3)">License</span><span>Free and open source, AGPLv3 · <a style="color:var(--blue);cursor:pointer" onclick="openAbout()">About Dig</a></span></div></div>'+
   '</div></div>';
@@ -400,12 +408,175 @@ function doImport(){
 }
 
 /* ---- SETUP ---- */
+/* ======================= ONBOARDING =======================
+   Five steps, run once on a machine Dig has not seen. It can be run again from
+   Settings, which only ever adds what is missing and never touches anything
+   that is already here. */
+
+var OB_STEPS=5;
 function renderSetup(){
-  var w=S.setupWork;var opts=[['apps','Apps or software','Things you build and release'],['clients','Client work','Projects you do for other people'],['content','Content','Videos, writing, a podcast, a channel'],['personal','Personal projects','Home, finances, things for yourself'],['programs','Programs or events','Ongoing efforts, campaigns, a gala']];
-  return '<div class="view"><div class="setup"><div class="eyebrow">Welcome</div><h1>Dig keeps every project you\'re working on in one place.</h1><p class="lede">What stage each one is at, what its next step is, and what you decided along the way. Ideas wait until you start them. Everything stays on this computer.</p>'+
-  '<label>What should we call this?</label><input type="text" value="'+esc(S.org)+'" placeholder="Your name, or your company" onchange="S.org=this.value">'+
-  '<label>What kinds of things do you work on?</label><div class="pick">'+opts.map(function(o){return '<div class="pk '+(w[o[0]]?'on':'')+'" onclick="S.setupWork.'+o[0]+'=!S.setupWork.'+o[0]+';render()"><div class="bx"></div><div><div class="h">'+o[1]+'</div><div class="p">'+o[2]+'</div></div></div>'}).join('')+'</div>'+
-  '<div class="setup-foot"><div class="note">This picks sensible groups, project types, and stages for you. Change every one of them later in Settings.</div><button class="btn p" onclick="finishSetup()">Let\'s go →</button></div></div></div>';
+  var step=Math.min(Math.max(S.obStep||1,1),OB_STEPS);
+  var dots='<div class="dots">'+[1,2,3,4,5].map(function(n){
+    return '<i class="'+(n===step?'on':(n<step?'done':''))+'"></i>'}).join('')+'</div>';
+  return '<div class="view"><div class="ob">'+dots+'<div class="body">'+obBody(step)+'</div>'+obFoot(step)+'</div></div>';
+}
+function obBody(step){
+  if(step===1)return '<div class="eyebrow">Welcome</div>'+
+    '<h1 style="font-size:28px;font-weight:600;letter-spacing:-.025em;margin-top:6px">Dig keeps every project you\'re working on in one place.</h1>'+
+    '<div class="three">'+
+      '<div><i></i><span><b>What stage each one is at.</b> Every project moves through stages you decide on.</span></div>'+
+      '<div><i></i><span><b>What its next step is.</b> One line saying the thing that moves it forward.</span></div>'+
+      '<div><i></i><span><b>What you decided along the way.</b> Numbered, dated, and kept.</span></div>'+
+    '</div>'+
+    '<div class="plain">Everything stays on this computer. There are no accounts, and by default the app never touches the internet.</div>';
+
+  if(step===2)return '<div class="eyebrow">Who this is for</div>'+
+    '<h1 style="font-size:24px;font-weight:600;letter-spacing:-.025em;margin-top:6px">What should Dig call this?</h1>'+
+    '<p class="lede">Both of these are optional, and both are easy to change later in Settings.</p>'+
+    '<label>Your name, or your company</label>'+
+    '<input type="text" id="ob-org" value="'+esc(S.org)+'" placeholder="Example Studio" oninput="S.org=this.value">'+
+    '<label>What to call you in the greeting</label>'+
+    '<input type="text" id="ob-you" value="'+esc(S.you)+'" placeholder="Your first name" oninput="S.you=this.value">'+
+    '<div class="plain">Leave them blank and Dig will simply say good morning.</div>';
+
+  if(step===3){
+    var w=S.setupWork;
+    var opts=[['apps','Apps or software','Things you build and release'],
+      ['clients','Client work','Projects you do for other people'],
+      ['content','Content','Videos, writing, a podcast, a channel'],
+      ['personal','Personal projects','Home, finances, things for yourself'],
+      ['programs','Programs or events','Ongoing efforts, campaigns, a gala']];
+    return '<div class="eyebrow">What you work on</div>'+
+      '<h1 style="font-size:24px;font-weight:600;letter-spacing:-.025em;margin-top:6px">What kinds of things do you work on?</h1>'+
+      '<p class="lede">This picks sensible groups, project types, and stages for you.</p>'+
+      '<div class="pick">'+opts.map(function(o){
+        return '<div class="pk '+(w[o[0]]?'on':'')+'" onclick="S.setupWork.'+o[0]+'=!S.setupWork.'+o[0]+';render()">'+
+        '<div class="bx"></div><div><div class="h">'+o[1]+'</div><div class="p">'+o[2]+'</div></div></div>'}).join('')+'</div>'+
+      '<div class="preview">'+obPreview()+'</div>'+
+      '<div class="plain">Every group, type, stage, and checklist below can be changed later in Settings.</div>';
+  }
+
+  if(step===4)return '<div class="eyebrow">Start</div>'+
+    '<h1 style="font-size:24px;font-weight:600;letter-spacing:-.025em;margin-top:6px">Start empty, or look around first?</h1>'+
+    '<p class="lede">If you would rather see how it all fits together before putting your own work in, Dig can add a handful of examples you can throw away in one click.</p>'+
+    '<div class="pick" style="grid-template-columns:1fr">'+
+      '<div class="pk '+(!S.obExamples?'on':'')+'" onclick="S.obExamples=false;render()"><div class="bx"></div>'+
+        '<div><div class="h">Start empty</div><div class="p">Nothing is created. Add your first project when you are ready.</div></div></div>'+
+      '<div class="pk '+(S.obExamples?'on':'')+'" onclick="S.obExamples=true;render()"><div class="bx"></div>'+
+        '<div><div class="h">Add a few examples to look around</div><div class="p">Four projects across two groups, some ideas, one thing waiting, and a file. Settings has a button that removes every one of them.</div></div></div>'+
+    '</div>';
+
+  return '<div class="eyebrow">Three things to know</div>'+
+    '<h1 style="font-size:24px;font-weight:600;letter-spacing:-.025em;margin-top:6px">That is everything.</h1>'+
+    '<div class="three">'+
+      '<div><i></i><span><b>Ctrl K adds anything, from anywhere.</b> An idea, a to-do, a bug, a note, a link. Dig works out where it goes.</span></div>'+
+      '<div><i></i><span><b>Projects move through stages, and you decide when.</b> Nothing advances on its own and nothing is ever overdue.</span></div>'+
+      '<div><i></i><span><b>Nothing leaves this computer</b> unless you turn on sync between your own devices.</span></div>'+
+    '</div>'+
+    '<div class="plain"><a style="color:var(--blue);cursor:pointer" onclick="openKeys()">See all shortcuts</a></div>';
+}
+function obPreview(){
+  var picks=SETUP_PICKS.filter(function(x){return S.setupWork[x[0]]});
+  if(!picks.length)return '<span class="none">Nothing picked, so Dig will make one group called <b>Projects</b> and one project type, <b>Task</b>, with the stages Planned, In progress, Done.</span>';
+  return 'Dig will make '+picks.map(function(x){
+    var g=SETUP_GROUPS[x[1]],t=SETUP_TYPES[x[2]];
+    return 'a group called <b>'+esc(g.name)+'</b>'+(g.priv?' (private)':'')+
+      ' and a project type <b>'+esc(t.name)+'</b> that moves through '+t.stages.map(esc).join(' → ');
+  }).join(', and ')+'.';
+}
+function obFoot(step){
+  return '<div class="ob-foot">'+
+    (step>1?'<button class="btn" onclick="obGo('+(step-1)+')">Back</button>':'')+
+    '<span class="sp"></span>'+
+    (step<OB_STEPS?'<span class="skip" onclick="obSkip()">Skip the rest</span>':'')+
+    '<button class="btn p" onclick="'+(step<OB_STEPS?'obGo('+(step+1)+')':'obFinish()')+'">'+
+      (step<OB_STEPS?'Continue':'Open Dig')+' →</button></div>';
+}
+function obGo(n){S.obStep=n;render()}
+function obSkip(){S.obStep=OB_STEPS;render()}
+function obFinish(){
+  finishSetup();
+  if(S.obExamples)addExamples();
+  S.startHere={added:false,captured:false,nextStep:false,gone:false};
+  render();
+}
+
+/* ---- the examples, which are nobody's real work ---- */
+function addExamples(){
+  if(S.projects.some(function(p){return p.example}))return;
+  var gWork=S.groups[0],gHome=S.groups[1]||S.groups[0];
+  /* One type across all four, so the examples read as one coherent pipeline
+     using whichever stages this person actually chose. */
+  var t=S.types[0],t2=t;
+  var day=function(n){return new Date(NOW-n*DAY)};
+  var mk=function(name,g,type,stage,days,when,next,notes){
+    return {id:uid(),name:name,group:g.id,type:type.id,stage:Math.min(stage,type.stages.length-1),
+      enteredAt:day(days),when:when,next:next,items:[],decisions:[],files:[],links:[],notes:notes||'',
+      pub:!g.priv,wait:null,lastAct:day(days),releases:[],people:[],hist:[],logs:[],
+      quiet:false,origin:null,parked:false,waitHist:[],example:true}};
+
+  var wr=mk('Website refresh',gWork,t,1,6,'now','Agree the page list','Lead with the speed improvement.');
+  wr.items=[{id:uid(),text:'Write down what the site is for',done:true,tag:''},
+            {id:uid(),text:'Old gallery page still 404s',done:false,tag:'bug'}];
+  wr.decisions=[{id:uid(),no:1,text:'Keep the existing content structure. Rewriting it would double the timeline for no measurable gain.',at:day(5),supersedes:null,superseded:false}];
+  wr.logs=[{id:uid(),text:'Walked the current site with fresh eyes. Most of it is fine; it is the speed that is the problem.',at:day(4),stage:t.stages[1]||'',highlight:true}];
+  wr.people=[{id:uid(),n:'Client',r:'approver'}];
+  wr.links=['example.com'];
+
+  var nco=mk('New client onboarding',gWork,t,0,3,'next','','');
+  nco.wait={what:'the signed agreement',since:day(3)};
+
+  var qr=mk('Quarterly report',gWork,t2,1,9,'now','Pull the numbers for section two','');
+  qr.decisions=[{id:uid(),no:2,text:'Report in the same format as last quarter so the numbers stay comparable.',at:day(2),supersedes:null,superseded:false}];
+
+  var kr=mk('Kitchen renovation',gHome,t2,0,14,'later','Measure the alcove before ordering','Nothing gets ordered before the measurements are checked twice.');
+
+  S.projects.unshift(kr,qr,nco,wr);
+  S.ideas.unshift(
+    {id:uid(),text:'A better way to file receipts',desc:'One folder, one naming rule, done at the end of each month.',at:day(3),opened:null,group:'',example:true},
+    {id:uid(),text:'Weekly walking route map',desc:'Somewhere new every week, within an hour of home.',at:day(30),opened:null,group:'',example:true},
+    {id:uid(),text:'A short guide for new clients',desc:'What to expect, in one page, sent before the first call.',at:day(90),opened:null,group:'',example:true},
+    {id:uid(),text:'Recipe box that actually gets used',desc:'Only the ones already cooked twice.',at:day(140),opened:day(60),group:'',example:true});
+  pickResurf();
+  S.inbox.unshift({id:uid(),text:'Send the revised page list',type:'todo',at:day(0.2),guess:wr.id,example:true});
+  S.library.unshift({id:uid(),kind:'note',title:'The sentence that explains the work',
+    meta:'"Fewer pages, faster, and easier to update." Use it in every proposal.',group:gWork.id,example:true});
+  S.activity.unshift(
+    {id:uid(),group:gWork.id,pid:wr.id,text:'Website refresh: D-0001 recorded',at:day(5),kind:'decision',example:true},
+    {id:uid(),group:gWork.id,pid:wr.id,text:'Website refresh moved forward',at:day(6),kind:'move',example:true});
+  scheduleSave();
+}
+function hasExamples(){
+  return S.projects.some(function(x){return x.example})||S.ideas.some(function(x){return x.example})||
+         S.inbox.some(function(x){return x.example})||S.library.some(function(x){return x.example})||
+         (S.libraryFiles||[]).some(function(x){return x.example});
+}
+function removeExamples(){
+  var n=0,drop=function(list){return (list||[]).filter(function(x){if(x.example){n++;return false}return true})};
+  S.projects=drop(S.projects);S.ideas=drop(S.ideas);S.inbox=drop(S.inbox);
+  S.library=drop(S.library);S.libraryFiles=drop(S.libraryFiles);S.activity=drop(S.activity);
+  if(S.resurfId&&!S.ideas.some(function(x){return x.id===S.resurfId}))pickResurf();
+  render();toast('Took out '+n+' example records. Everything you made yourself is untouched.');
+}
+
+/* ---- Start here, for the first session only ---- */
+function startHereCard(){
+  var s=S.startHere;
+  if(!s||s.gone)return '';
+  var done=[s.added,s.captured,s.nextStep];
+  if(done.every(function(x){return x}))return '';
+  var row=function(ok,text){return '<div class="step'+(ok?' ok':'')+'"><span class="bx"></span>'+text+'</div>'};
+  return '<div class="starthere"><div class="top"><b>Start here</b>'+
+    '<span style="font-size:12.5px;color:var(--ink-3)">three things, then this goes away</span>'+
+    '<span class="x" onclick="dismissStartHere()">Dismiss</span></div>'+
+    row(s.added,'Add your first project')+
+    row(s.captured,'Capture something with <kbd>Ctrl K</kbd>')+
+    row(s.nextStep,'Give a project its next step')+
+    '</div>';
+}
+function dismissStartHere(){if(S.startHere){S.startHere.gone=true;render()}}
+function tickStartHere(which){
+  if(S.startHere&&!S.startHere.gone&&!S.startHere[which]){S.startHere[which]=true}
 }
 
 /* ---- OVERLAYS ---- */
@@ -439,6 +610,7 @@ function doCapture(){var raw=document.getElementById('cap-in').value.trim();if(!
   else if(k==='link'||k==='note'){S.library.unshift({id:uid(),kind:k,title:text,meta:k==='link'?raw:'',group:''});toast('Saved to the Library')}
   else if(k==='idea'){S.ideas.unshift({id:uid(),text:text,desc:'',at:NOW,opened:null,group:''});toast('Idea saved. It\'s in Ideas whenever you want it.')}
   else{S.inbox.unshift({id:uid(),text:text,type:k,at:NOW,guess:null});toast('Saved to your inbox. Put it somewhere when you\'re ready.')}
+  tickStartHere('captured');
   closeOv();render()}
 /* palette */
 function openPal(){document.getElementById('ov-pal').classList.add('open');var i=document.getElementById('pal-in');i.value='';palFilter('');setTimeout(function(){i.focus()},10)}
@@ -463,7 +635,7 @@ function openNew(gid,from){
   if(!S.types.length){toast('Add a project type in Settings first. Every project moves through one.');return}
   dlg('<div class="dh2"><h3>'+(from?'Start this idea as a project':'New project')+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><label>Name</label><input type="text" id="np-n" value="'+esc(from?from.text:'')+'" placeholder="What is it called?"><div class="row2"><div><label>Group</label><select id="np-g">'+S.groups.map(function(g){return '<option value="'+g.id+'" '+(gid===g.id?'selected':'')+'>'+esc(g.name)+'</option>'}).join('')+'</select></div><div><label>Type</label><select id="np-t">'+S.types.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+' · '+t.stages.join(' → ')+'</option>'}).join('')+'</select></div></div><div class="row2"><div><label>First next step</label><input type="text" id="np-x" placeholder="The first thing that moves it forward"></div><div><label>On the roadmap</label><select id="np-w">'+HZ.map(function(h){return '<option value="'+h[0]+'" '+(h[0]==='next'?'selected':'')+'>'+h[1]+'</option>'}).join('')+'</select></div></div><div class="helper">It starts at the first stage of its type. Its group decides whether it can be shared.</div></div><div class="foot"><button class="btn" onclick="closeOv()">Cancel</button><button class="btn p" onclick="createP('+(from?"'"+from.id+"'":'null')+')">Create</button></div>')}
 function createP(fromId){var n=document.getElementById('np-n').value.trim();if(!n)return;var gid=document.getElementById('np-g').value,tid=document.getElementById('np-t').value;
-  if(!tid||!S.types.some(function(t){return t.id===tid})){toast('Add a project type in Settings first. Every project moves through one.');return}var np={id:uid(),name:n,group:gid,type:tid,stage:0,enteredAt:NOW,when:document.getElementById('np-w').value,next:document.getElementById('np-x').value,items:[],decisions:[],files:[],links:[],notes:'',pub:!G(gid).priv,wait:null,lastAct:NOW,releases:[],people:[],hist:[],quiet:false,origin:null,parked:false,waitHist:[]};if(fromId){var x=S.ideas.find(function(y){return y.id===fromId});np.origin=x.text;np.notes=x.desc;S.ideas=S.ideas.filter(function(y){return y.id!==fromId});if(S.resurfId===fromId)pickResurf()}S.projects.unshift(np);log(np,n+' started','move');closeOv();S.ptab='work';openP(np.id);toast('<b>'+esc(n)+'</b> is a project now')}
+  if(!tid||!S.types.some(function(t){return t.id===tid})){toast('Add a project type in Settings first. Every project moves through one.');return}var np={id:uid(),name:n,group:gid,type:tid,stage:0,enteredAt:NOW,when:document.getElementById('np-w').value,next:document.getElementById('np-x').value,items:[],decisions:[],files:[],links:[],notes:'',pub:!G(gid).priv,wait:null,lastAct:NOW,releases:[],people:[],hist:[],quiet:false,origin:null,parked:false,waitHist:[]};if(fromId){var x=S.ideas.find(function(y){return y.id===fromId});np.origin=x.text;np.notes=x.desc;S.ideas=S.ideas.filter(function(y){return y.id!==fromId});if(S.resurfId===fromId)pickResurf()}S.projects.unshift(np);log(np,n+' started','move');tickStartHere('added');closeOv();S.ptab='work';openP(np.id);toast('<b>'+esc(n)+'</b> is a project now')}
 /* stages */
 function openAdvance(id){var p=Pr(id),ns=nextStage(p),un=unmet(p);dlg('<div class="dh2"><h3>Move '+esc(p.name)+' to '+esc(ns)+'</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div style="color:var(--ink-2)">You\'ve been in <b>'+esc(stageName(p))+'</b> for '+days(p.enteredAt)+' days.</div>'+(un.length?'<div class="warn">A few things from this stage\'s checklist aren\'t done yet:<ul>'+un.map(function(e){return '<li>'+esc(e)+'</li>'}).join('')+'</ul></div>':'<div class="ok">Everything on this stage\'s checklist is done. Nice.</div>')+'<label>Next step in '+esc(ns)+'</label><input type="text" id="adv-x" placeholder="Optional, but it helps tomorrow-you"></div><div class="foot"><button class="btn" onclick="closeOv()">Not yet</button><button class="btn p" onclick="doAdvance(\''+id+'\')">'+(un.length?'Move anyway':'Move to '+esc(ns))+'</button></div>')}
 /* What the last stage move changed, so Undo can put back exactly that and

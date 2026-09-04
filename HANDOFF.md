@@ -64,7 +64,7 @@ Phases as restructured by the addendum's Part 8.
 - [x] Phase 4: setup defaults and v1 migration
 - [ ] Phase 4.5: the Part 7 feature set
 - [x] Phase 5: desktop integration
-- [ ] Phase 5.5: Part 1 onboarding
+- [x] Phase 5.5: Part 1 onboarding
 - [ ] Phase 5.75: Part 5B sync server, conformance client, docs/SYNC.md
 - [~] Phase 6: fidelity pass (done against the prototype; redo after the above)
 - [ ] Phase 7: automated tests, extended
@@ -161,8 +161,22 @@ system underneath it.
 
 ## Current state
 
-Parts 5A and 6 of the addendum are in, and every defect the adversarial review
-confirmed is fixed. 107 tests green.
+Addendum Parts 1, 2, 5A and 6 are in, and every defect the adversarial review
+confirmed is fixed. 123 tests green.
+
+Onboarding is five steps with progress dots, Back, Continue, and a Skip that
+jumps to the end and still applies the defaults. Step three shows a live plain
+sentence saying exactly which groups, types, and stages will be made. Step four
+offers a generic example set, four projects across two groups with ideas, a
+wait, an inbox item, two decisions and a log entry, all marked `example` so
+Settings can take every one of them out in a click without touching anything the
+person made. After it, a Start here card sits on Home until its three things are
+done or it is dismissed, and never comes back.
+
+**Part 2 verified.** Launched against an empty home inside a network namespace
+with no interfaces at all: it opens on step one of onboarding, holds no data of
+any kind, renders Geist from the bundled files, walks every screen, creates a
+project, and attempts zero network requests.
 
 Files are first class: a picker that takes several at once, drag and drop onto a
 project, a group page, or the Library, paste from the clipboard, deduplication by
