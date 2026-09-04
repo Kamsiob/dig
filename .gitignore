@@ -12,7 +12,7 @@ dist/
 *.AppDir/
 *.spec.bak
 
-# Runtime data — the user's ideas, apps, and attachments never enter the repo
+# Runtime data: the user's ideas, apps, and attachments never enter the repo
 *.db
 *.db-wal
 *.db-shm
