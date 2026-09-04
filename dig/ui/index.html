@@ -4,32 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dig</title>
-<style>
-body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#F4F6FA;color:#0E1421;font:14px system-ui,sans-serif}
-pre{background:#fff;border:1px solid #E1E7EF;border-radius:12px;padding:18px 22px;max-width:70ch;overflow:auto}
-</style>
+<link rel="stylesheet" href="app.css">
 </head>
 <body>
-<pre id="out">Connecting to the bridge...</pre>
+<div class="app" id="app"></div>
 <script src="qwebchannel.js"></script>
-<script>
-new QWebChannel(qt.webChannelTransport, function (channel) {
-  var bridge = channel.objects.bridge;
-  bridge.load(function (raw) {
-    var opening = JSON.parse(raw);
-    document.documentElement.setAttribute('data-theme', opening.theme);
-    document.getElementById('out').textContent =
-      'Dig ' + opening.version + '\n' +
-      'bridge: connected\n' +
-      'state: ' + (opening.state ? 'loaded' : 'none yet') + '\n' +
-      'theme: ' + opening.theme + '\n' +
-      'reduce motion: ' + opening.reduceMotion + '\n' +
-      'data: ' + opening.dataPath + '\n' +
-      (opening.notice ? 'notice: ' + opening.notice + '\n' : '') +
-      '\nPhase 2 replaces this page with the prototype.';
-    bridge.save(JSON.stringify(opening.state || { hello: 'dig v2', ui: {} }));
-  });
-});
-</script>
+<script src="app.js"></script>
 </body>
 </html>

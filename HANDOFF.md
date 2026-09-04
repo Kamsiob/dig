@@ -43,7 +43,7 @@ Phases are defined in `docs/handoff-v2/BUILD_PLAN.md`. Do not merge or skip them
 
 - [x] Phase 0: read, plan, checkpoint
 - [x] Phase 1: shell and bridge
-- [ ] Phase 2: move the prototype in
+- [x] Phase 2: move the prototype in
 - [ ] Phase 3: native pieces
 - [ ] Phase 4: setup defaults and migration
 - [ ] Phase 5: desktop integration
@@ -97,7 +97,23 @@ system underneath it.
 10. **Python owns `ui.window`.** The interface cannot know where its window sits
    on the desktop, so the bridge stamps the geometry into the document on the way
    to disk. Nothing in the interface has to think about it.
-11. **The web view is hard-wired to this computer.** A URL request interceptor
+11. **Setup starts with nothing checked, and Follow system is the default theme.**
+   The prototype's setup screen shows three boxes ticked and a light theme because
+   that is its sample data, the same way the org field reads "Example Studio". A
+   fresh install pre-fills none of them, and follows the desktop's own scheme.
+12. **Setup fills in `you` from the organization name.** The setup screen has one
+   name field, bound to `org`, and Home greets `you`. On finishing setup, `you` is
+   set to the first word of what was typed if it is still empty. Settings has an
+   explicit "Your name" field to change it.
+13. **The resurfaced idea is picked again at every launch.** SPEC's rule is that
+   resurfacing never repeats the idea just shown. `resurfId` is persisted so the
+   next launch can exclude it, and `pickResurf()` runs at startup, which is what
+   makes the empty state's promise of "one will show up here each day" true.
+14. **Nothing guesses at what a date looks like.** Dates go to disk as ISO strings
+   and are turned back into Date objects at the exact paths the data model names,
+   rather than by sniffing every string in the document, so a note that happens to
+   read like a date is left alone.
+15. **The web view is hard-wired to this computer.** A URL request interceptor
    refuses every scheme except file, qrc, data, blob, and about, so "no network
    calls" is enforced rather than merely intended. Navigation away from the one
    local document is refused and handed to `openUrl` instead. The context menu is
@@ -106,12 +122,23 @@ system underneath it.
 
 ## Current state
 
-Phase 1 complete. The v1 application code is gone; the v2 skeleton is in place:
-`dig/paths.py`, `dig/storage.py`, `dig/bridge.py`, `dig/window.py`, `dig/app.py`,
-a placeholder `dig/ui/index.html` that Phase 2 replaces, and the vendored
-`dig/ui/qwebchannel.js` (Qt, LGPLv3, compatible with AGPLv3). 17 storage tests
-pass. A smoke run confirms the page loads, calls `bridge.load()`, calls
-`bridge.save()`, and the state lands in SQLite with a history snapshot.
+Phase 2 complete. The prototype is the interface.
+
+`dig/ui/` holds `index.html`, `app.css`, `app.js`, the six Geist weights the
+design calls for (SIL OFL, license alongside them), and the vendored
+`qwebchannel.js` (Qt, LGPLv3, compatible with AGPLv3). `app.css` and `app.js`
+were produced from the prototype by an exact-match transform with an assertion
+per edit, so every change is one of the nineteen the build plan asks for and
+nothing else moved.
+
+Verified in the running app: Geist and Geist Mono load, zero requests are
+blocked because zero are made, no console errors, and capture, checklist
+toggles, horizon moves, and the theme all survive a restart with dates revived
+as real Date objects.
+
+`scripts/drive.py` starts the real app against a data folder of your choosing
+and walks a JSON plan of steps, recording values and screenshots. The fidelity
+pass, the test suite, and the scripted user pass all run on it.
 
 Development environment: `.venv` created with `--system-site-packages` so it
 picks up the system PySide6 6.11.1 rather than downloading a second copy.
@@ -125,10 +152,22 @@ There is real v1 data on this machine at `~/.local/share/dig/dig.db`: one app
 plus the v1 `appearance` and `window_geometry` settings. The migration must
 handle it and keep the original file as `dig-v1.db.bak`.
 
+## Known defects to fix in Phase 8
+
+Both are inherited from the prototype and both will bite real data, so they are
+logged here rather than fixed quietly out of phase.
+
+1. **The sidebar footer collides.** At the design's 232px sidebar, Settings,
+   "Shortcuts ?", and the Light / Dark / Auto switch do not fit on one line, so
+   "Shortcuts" wraps onto "Settings" and the sidebar grows a horizontal
+   scrollbar. Confirmed in the prototype itself with real Geist metrics.
+2. **An apostrophe in a stage name or a checklist suggestion breaks its button.**
+   `addExpected`, `addExp`, and `delExp` build single quoted JavaScript string
+   literals inside double quoted HTML attributes. A stage called "Don't ship
+   Friday" would produce a broken handler. The `jsq()` helper added in Phase 2 is
+   the fix; apply it in Phase 8 when the pass turns it up.
+
 ## Known risks
 
-- The sidebar footer (Settings, Shortcuts, theme switch) is tight at a 232px
-  sidebar. Verify with real Geist metrics, which are narrower than the fallback
-  the prototype falls back to offline.
 - QtWebEngine on Wayland needs checking for the correct scale factor and for
   `setDesktopFileName` grouping.
