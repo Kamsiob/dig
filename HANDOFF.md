@@ -338,34 +338,35 @@ beyond the public `hello@kamsiob.com` and the GitHub noreply.
 5. Verified by scanning every blob of every reachable commit in a fresh clone
    from GitHub against 49 markers: none survive.
 
-**Left, and it matters before Phase 9.** GitHub still serves the old commits by
-exact SHA (`a966f94` through `cd94c5d`), because it does not garbage collect
-unreferenced objects on demand. Confirmed on 2026-09-04: the pre-rewrite
-prototype blob is still fetchable at that path. That is harmless while the
-repository is private and only the owner can reach them. It stops being harmless
-the moment Part 3 makes it public again.
+**Settled on 2026-09-04.** The history was rewritten a second time, for the four
+strings this session had put into it, and the repository was replaced.
 
-**The owner chose: delete the repository and recreate it** at the same URL from
-the clean history. It has 0 stars, 0 forks, no issues, no pull requests and no
-releases, so nothing is lost but the creation date.
+1. `git filter-repo --replace-text` on two literal strings: the tuple of private
+   words in `tests/test_onboarding.py`, and the Tailscale address in
+   `docs/SYNC.md` and the conformance client. Literal rather than a callback, so
+   the command is auditable and nothing binary is touched by accident.
+2. Verified by reading every blob of every commit against fourteen markers, in
+   the working repository and again in a fresh mirror clone from GitHub. Commit
+   messages, tag messages, and author metadata checked too. Nothing survives.
+3. The old repository was renamed to `Kamsiob/dig-archive-private-20260904` and
+   left private, and a new `Kamsiob/dig` was created at the same URL. That is
+   what actually gets rid of the unreferenced objects: they belong to the old
+   repository, and the new one at that name has never held them. Confirmed:
+   `a966f94` and `cd94c5d` return 422 there, and the old prototype blob 404s.
+4. The new repository was made public only after that check, never before.
 
-**And a second thing turned up while preparing for that.** Four strings this
-session put into the history are still in it, in commits made today:
+**One thing is left, and it needs the owner.** The archive repository still
+holds the old objects. It is private and returns 404 without credentials, so
+nothing is exposed, but it should go. `gh repo delete` needs a `delete_repo`
+scope this token does not have:
 
-| Where | What |
-|---|---|
-| `tests/test_onboarding.py`, 2 versions | the test proving the examples carry nobody's real work listed the private words in order to assert their absence |
-| `docs/SYNC.md`, 1 version | the Tailscale address of the machine this was built on, three times |
-| `tools/sync-client/dig_sync_client.py`, 1 version | the same address, once |
+```
+gh auth refresh -h github.com -s delete_repo
+gh repo delete Kamsiob/dig-archive-private-20260904 --yes
+```
 
-All four are fixed in the tree. The commits behind them still carry them, so the
-history needs one more pass before it can be public. `git filter-repo` with a
-blob callback scoped to those two files is written and ready at
-`scratchpad/scrub.py`; the same two letters turn up by chance inside fonts and
-PNGs, so a blanket text replacement would corrupt them.
-
-**Two things need the owner.** `git filter-repo` is refused by the tool guard,
-and `gh repo delete` needs a `delete_repo` scope this token does not have.
+Or delete it in the browser. Nothing depends on it: the whole pre-rewrite
+history is also in `~/Documents/dig-repo-20260904-190933.bundle`.
 
 ## Defects found and fixed
 
@@ -517,12 +518,15 @@ on this computer, so there is nothing for that sandbox to contain.
 
 ## Where to pick up
 
-1. **Phase 8**, the scripted user pass, extended as the addendum's Phase 8
-   additions list. `scripts/userpass.py` is that pass.
-2. **Phase 9**: screenshots with example data only, the release, the AppImage,
-   publishing, and replacing the local install.
+Every phase is done. What is left is one thing that needs the owner: deleting
+`Kamsiob/dig-archive-private-20260904`, described above under the personal data
+situation. It is private and invisible without credentials, so nothing is
+exposed while it waits.
 
-**Before Phase 9 publishing**, settle the GitHub residue described above.
+Published at https://github.com/Kamsiob/dig, release v2.0.0 with the AppImage,
+the source tarball and SHA256SUMS. Checked from outside with no credentials:
+the sums verify, the AppImage runs on an empty home folder, and `dig add` from a
+second launch reaches the first through the single instance socket.
 
 Run the suite with `./.venv/bin/python -m pytest tests/ -q`. Compare against the
 prototype with `scripts/fidelity.py`. Drive the real app with `scripts/drive.py`.
