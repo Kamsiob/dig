@@ -222,27 +222,220 @@ var HZ=[['now','Now','what you\'re working on','var(--blue)'],['next','Next','li
 function hzLabel(w){var h=HZ.find(function(x){return x[0]===(w||'later')});return h?h[1]:'Finished'}
 
 /* ======================= RENDER ======================= */
-function render(){
-  document.documentElement.setAttribute('data-theme',S.theme==='system'?SYS_THEME:S.theme);
-  var app=document.getElementById('app');
-  /* Anything open is kept as it stands rather than drawn again. Drawing it
-     again would replace the elements a person is typing into, and everything
-     they had typed would go with them. Whatever is behind it is redrawn as
-     usual. */
-  var open=app.querySelector('.overlay.open');
-  var keep=open?[].slice.call(app.querySelectorAll('.overlay')):null;
-  app.className='app';
-  app.innerHTML=renderSide()+'<main class="main" id="main">'+renderView(S.view)+'</main>'+(keep?'':renderOverlays())+'<div class="drop-veil" id="drop-veil"><div class="card"><b>Drop to keep a copy</b><span>Dig keeps its own copy. Your file is not moved.</span></div></div><div class="toasts" id="toasts"></div>';
-  if(keep){
-    var veil=document.getElementById('drop-veil');
-    keep.forEach(function(o){app.insertBefore(o,veil)});
+/* ---- putting the new picture on the page without throwing away the old one ----
+
+   Every render function here builds a string of HTML, and for a long time that
+   string was assigned straight to the window's innerHTML. That is the simplest
+   thing that works, and it is also why using Dig felt the way it did: replacing
+   everything threw away the scroll position, took the focus off whatever you
+   were typing in, lost what you had typed, and restarted the entry animation on
+   every row on the screen. Ticking one box made the whole page shudder.
+
+   So the string is still built the same way, and then applied rather than
+   swapped in. Anything already correct is left exactly as it is, down to the
+   element, which is what keeps the scroll where it was, the caret where it was,
+   and the animations from playing again.
+
+   Rows are matched by what identifies them rather than by their position, so
+   adding one at the top moves nothing else and only the new row animates in. */
+
+function keyOf(el){
+  if(el.nodeType!==1)return null;
+  return el.getAttribute('data-k')||el.id||el.getAttribute('onclick')||null;
+}
+
+/* Attributes the page owns and the string does not: what a person has typed,
+   what is open, and what the accessibility pass added. */
+var KEEP_ATTRS={'tabindex':1,'role':1,'aria-label':1,'aria-hidden':1,
+                'aria-live':1,'aria-modal':1};
+
+function syncAttrs(live,next){
+  var i,a;
+  for(i=next.attributes.length-1;i>=0;i--){
+    a=next.attributes[i];
+    if(live.getAttribute(a.name)!==a.value)live.setAttribute(a.name,a.value);
   }
+  for(i=live.attributes.length-1;i>=0;i--){
+    a=live.attributes[i];
+    if(next.hasAttribute(a.name))continue;
+    if(KEEP_ATTRS[a.name])continue;
+    /* A box that grows as you type sets its own height, the same way the page
+       owns its scroll position. The string it was built from cannot know. */
+    if(a.name==='style'&&live.tagName==='TEXTAREA')continue;
+    /* An overlay that is open stays open: the string never says so, because
+       opening is something that happens to the element after it is drawn. */
+    if(a.name==='class'&&live.classList.contains('open'))continue;
+    live.removeAttribute(a.name);
+  }
+  if(next.hasAttribute('class')&&live.classList.contains('open')&&
+     next.getAttribute('class').indexOf('open')<0){
+    live.setAttribute('class',next.getAttribute('class')+' open');
+  }
+  /* Something that has just become clickable needs what a keyboard and a
+     screen reader need, the same as something newly drawn does. */
+  if(live.hasAttribute('onclick')&&!live.hasAttribute('tabindex'))nameOne(live);
+}
+
+/* What the page knows and the HTML does not: the value in a box someone is
+   typing into, and whether it is the box they are typing into. */
+function syncField(live,next){
+  var tag=live.tagName;
+  if(tag==='INPUT'||tag==='TEXTAREA'){
+    if(document.activeElement===live)return;
+    var want=next.value!==undefined&&next.hasAttribute('value')
+      ? next.getAttribute('value') : (tag==='TEXTAREA'?next.textContent:null);
+    if(want!==null&&live.value!==want)live.value=want;
+    if(tag==='INPUT'&&live.type==='checkbox')live.checked=next.checked;
+    return;
+  }
+  if(tag==='SELECT'){
+    if(document.activeElement===live)return;
+    var chosen=null;
+    [].forEach.call(next.options,function(o){if(o.selected)chosen=o.value});
+    if(chosen!==null&&live.value!==chosen)live.value=chosen;
+  }
+}
+
+function patch(live,next){
+  syncAttrs(live,next);
+  var tag=live.tagName;
+  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'){
+    if(tag==='SELECT')patchChildren(live,next);
+    syncField(live,next);
+    return;
+  }
+  /* Something a person is writing in is left alone entirely. */
+  if(live.isContentEditable&&document.activeElement===live)return;
+  patchChildren(live,next);
+}
+
+function patchChildren(live,next){
+  var wanted=[].slice.call(next.childNodes);
+  var have=[].slice.call(live.childNodes);
+
+  /* Everything on the page that can be recognised again, by key. */
+  var byKey={},k,i;
+  for(i=0;i<have.length;i++){
+    k=keyOf(have[i]);
+    if(k&&!byKey[k])byKey[k]=have[i];
+  }
+
+  var at=live.firstChild;
+  for(i=0;i<wanted.length;i++){
+    var want=wanted[i];
+    var key=keyOf(want);
+    var found=null;
+
+    if(key&&byKey[key]&&byKey[key].nodeName===want.nodeName){
+      found=byKey[key];
+      byKey[key]=null;
+    }else if(at&&!keyOf(at)&&at.nodeName===want.nodeName){
+      /* Nothing to recognise it by, so the one in the same place will do. */
+      found=at;
+    }
+
+    if(found){
+      if(found!==at)live.insertBefore(found,at);
+      else at=at.nextSibling;
+      if(found.nodeType===3){
+        if(found.nodeValue!==want.nodeValue)found.nodeValue=want.nodeValue;
+      }else if(found.nodeType===1){
+        patch(found,want);
+      }
+    }else{
+      var made=want.cloneNode(true);
+      live.insertBefore(made,at);
+      if(made.nodeType===1)wireA11y(made);
+    }
+  }
+
+  /* Whatever is left over was not asked for. */
+  while(at){
+    var gone=at;
+    at=at.nextSibling;
+    live.removeChild(gone);
+  }
+  for(k in byKey){
+    if(byKey[k]&&byKey[k].parentNode===live)live.removeChild(byKey[k]);
+  }
+}
+
+var PARSER=document.createElement('div');
+
+/* Put this HTML inside this element, changing as little as possible. */
+function apply(live,html){
+  PARSER.innerHTML=html;
+  patchChildren(live,PARSER);
+  PARSER.innerHTML='';
+}
+
+/* Parse a string into one element, for patching a live one against. */
+function parsed(html){
+  PARSER.innerHTML=html;
+  var el=PARSER.firstElementChild;
+  PARSER.removeChild(el);
+  return el;
+}
+
+/* The last thing each part of the window was asked to be. A redraw that would
+   ask for the same thing again has nothing to do. */
+var DREW={side:'',view:'',overlays:''};
+
+function render(){
+  var theme=S.theme==='system'?SYS_THEME:S.theme;
+  if(document.documentElement.getAttribute('data-theme')!==theme)
+    document.documentElement.setAttribute('data-theme',theme);
+  var app=document.getElementById('app');
+  if(app.className!=='app')app.className='app';
+  var main=document.getElementById('main');
+
+  if(!main){
+    /* The first time there is nothing worth keeping, so build it outright. */
+    DREW.side=renderSide();
+    DREW.view=renderView(S.view);
+    DREW.overlays=renderOverlays();
+    app.innerHTML=DREW.side+'<main class="main" id="main"></main>'+DREW.overlays+
+      '<div class="drop-veil" id="drop-veil"><div class="card">'+
+      '<b>Drop to keep a copy</b>'+
+      '<span>Dig keeps its own copy. Your file is not moved.</span></div></div>'+
+      '<div class="toasts" id="toasts"></div>';
+    main=document.getElementById('main');
+    main.innerHTML=DREW.view;
+    wireA11y();
+  }else{
+    var side=app.querySelector('.side'),html;
+    html=renderSide();
+    if(side&&html!==DREW.side){DREW.side=html;patch(side,parsed(html))}
+    html=renderView(S.view);
+    if(html!==DREW.view){DREW.view=html;apply(main,html)}
+    /* An open dialog is left exactly as it is. It holds what is being typed,
+       and the string it was built from has no way to say so. */
+    if(!app.querySelector('.overlay.open')){
+      html=renderOverlays();
+      if(html!==DREW.overlays){
+        DREW.overlays=html;
+        var live=[].slice.call(app.querySelectorAll('.overlay'));
+        if(live.length){
+          PARSER.innerHTML=html;
+          var fresh=[].slice.call(PARSER.children);
+          for(var i=0;i<live.length&&i<fresh.length;i++)patch(live[i],fresh[i]);
+          PARSER.innerHTML='';
+        }
+      }
+    }
+  }
+
+  landmarks();
   renderToasts();
-  wireA11y();
   applyTextSize();
   scheduleSave();
 }
-function renderToasts(){var t=document.getElementById('toasts');if(!t)return;t.innerHTML=S.toasts.map(function(x){return '<div class="toast">'+x.msg+(x.undo?' <span class="u" onclick="'+x.undo+'">Undo</span>':'')+'</div>'}).join('')}
+
+var LAST_TOASTS='';
+function renderToasts(){var t=document.getElementById('toasts');if(!t)return;
+  var html=S.toasts.map(function(x){return '<div class="toast">'+x.msg+(x.undo?' <span class="u" onclick="'+x.undo+'">Undo</span>':'')+'</div>'}).join('');
+  if(html===LAST_TOASTS)return;
+  LAST_TOASTS=html;t.innerHTML=html}
 function ico(n){return{home:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 7.5L8 3l5.5 4.5V13a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1z"/></svg>',projects:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1.2"/><rect x="9" y="2" width="5" height="5" rx="1.2"/><rect x="2" y="9" width="5" height="5" rx="1.2"/><rect x="9" y="9" width="5" height="5" rx="1.2"/></svg>',roadmap:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 12l4-3 3 2 5-5"/><path d="M11 6h3v3"/></svg>',ideas:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-2.5 7.1c.4.4.5.9.5 1.4V11h4v-.5c0-.5.1-1 .5-1.4A4 4 0 0 0 8 2zM6.5 13.5h3"/></svg>',library:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3h4l1 1.5h5V13H3z"/></svg>',week:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 13V8M8 13V3M13 13V6"/></svg>'}[n]}
 function renderSide(){
   var nav=[['home','Home','1'],['projects','Projects','2'],['roadmap','Roadmap','3'],['ideas','Ideas','4'],['library','Library','5'],['week','Your review','6']];
@@ -1402,6 +1595,17 @@ function dlg(html){document.getElementById('dlg-body').innerHTML=html;document.g
   if(VIEWING&&document.getElementById('viewer-stage')){var v=fileById(VIEWING);if(v)setTimeout(function(){fillViewer(v)},0)}}
 function closeOv(){
   document.querySelectorAll('.overlay').forEach(function(o){o.classList.remove('open')});
+  /* What was in the dialog goes with it. A redraw used to clear it as a side
+     effect of rebuilding everything; now that redrawing leaves alone what has
+     not changed, closing has to do its own tidying. Otherwise a closed dialog
+     sits in the page holding whatever was typed into it. */
+  var body=document.getElementById('dlg-body');
+  if(body){body.className='dlg';body.innerHTML=''}
+  var found=document.getElementById('pal-list');
+  if(found)found.innerHTML='';
+  var typed=document.getElementById('pal-in');
+  if(typed)typed.value='';
+  VIEWING=null;
   if(WAITING_TO_RELOAD){WAITING_TO_RELOAD=false;setTimeout(reloadFromDisk,0)}
 }
 function openKeys(){dlg('<div class="dh2"><h3>Keyboard shortcuts</h3><span class="x" onclick="closeOv()">✕</span></div><div class="body"><div class="keys"><div><span>Add something</span><kbd>Ctrl K</kbd></div><div><span>Find anything</span><kbd>/</kbd></div><div><span>Home</span><kbd>1</kbd></div><div><span>Projects</span><kbd>2</kbd></div><div><span>Roadmap</span><kbd>3</kbd></div><div><span>Ideas</span><kbd>4</kbd></div><div><span>Library</span><kbd>5</kbd></div><div><span>Your review</span><kbd>6</kbd></div><div><span>Close anything</span><kbd>Esc</kbd></div><div><span>This card</span><kbd>?</kbd></div></div></div><div class="foot"><button class="btn p" onclick="closeOv()">Got it</button></div>')}
@@ -1992,24 +2196,29 @@ function pdfRoadmap(){
 
 var ICON_NAMES={'✕':'Close','★':'Mark as a highlight','←':'Previous','→':'Next',
                 '↵':'Enter','?':'Keyboard shortcuts'};
-function wireA11y(){
-  var app=document.getElementById('app');if(!app)return;
-  app.querySelectorAll('[onclick]').forEach(function(el){
-    var tag=el.tagName;
-    if(tag==='BUTTON'||tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA')return;
-    /* The dim behind a dialog closes it when clicked, but it is not a control
-       and a keyboard already has Esc. */
-    if(el.classList&&el.classList.contains('overlay'))return;
-    if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');
-    if(!el.hasAttribute('role'))el.setAttribute('role','button');
-    if(!el.getAttribute('aria-label')){
-      var text=(el.textContent||'').trim();
-      if(!text||text.length<2){
-        var name=ICON_NAMES[text]||el.getAttribute('title');
-        if(name)el.setAttribute('aria-label',name);
-      }
+/* Give one clickable thing what a keyboard and a screen reader need. */
+function nameOne(el){
+  var tag=el.tagName;
+  if(tag==='BUTTON'||tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA')return;
+  /* The dim behind a dialog closes it when clicked, but it is not a control
+     and a keyboard already has Esc. */
+  if(el.classList&&el.classList.contains('overlay'))return;
+  if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');
+  if(!el.hasAttribute('role'))el.setAttribute('role','button');
+  if(!el.getAttribute('aria-label')){
+    var text=(el.textContent||'').trim();
+    if(!text||text.length<2){
+      var name=ICON_NAMES[text]||el.getAttribute('title');
+      if(name)el.setAttribute('aria-label',name);
     }
-  });
+  }
+}
+
+function wireA11y(root){
+  var app=root||document.getElementById('app');if(!app)return;
+  /* Only what was just drawn needs this, not the whole window every time. */
+  if(app.nodeType===1&&app.hasAttribute('onclick'))nameOne(app);
+  app.querySelectorAll('[onclick]').forEach(nameOne);
   /* Purely decorative marks should not be read out at all. */
   app.querySelectorAll('svg, .dotc, .sbar, .waitdot, .who .av, .groups i, .kpi .l')
     .forEach(function(el){
@@ -2018,20 +2227,37 @@ function wireA11y(){
          el.classList.contains('waitdot')||el.classList.contains('av')))
         el.setAttribute('aria-hidden','true');
     });
-  /* Landmarks, so a screen reader can jump between the two halves. */
+  landmarks();
+}
+
+/* The roles that say what the two halves of the window are, and which section
+   is the one you are in. Cheap, and has to be right after every redraw, so it
+   is separate from naming every clickable thing. */
+/* Setting an attribute to the value it already has still counts as a change to
+   everything watching the page, so it is worth asking first. */
+function attr(el,name,value){
+  if(!el)return;
+  if(value===null){if(el.hasAttribute(name))el.removeAttribute(name);return}
+  if(el.getAttribute(name)!==value)el.setAttribute(name,value);
+}
+
+function landmarks(){
+  var app=document.getElementById('app');if(!app)return;
   var side=app.querySelector('.side'),main=app.querySelector('.main');
-  if(side){side.setAttribute('role','navigation');side.setAttribute('aria-label','Sections and groups')}
-  if(main)main.setAttribute('role','main');
-  var nav=app.querySelector('.nav');
-  if(nav)nav.setAttribute('aria-label','Go to');
+  attr(side,'role','navigation');
+  attr(side,'aria-label','Sections and groups');
+  attr(main,'role','main');
+  attr(app.querySelector('.nav'),'aria-label','Go to');
   app.querySelectorAll('.nav a').forEach(function(a){
-    a.setAttribute('role','link');
-    if(a.classList.contains('on'))a.setAttribute('aria-current','page');
+    attr(a,'role','link');
+    attr(a,'aria-current',a.classList.contains('on')?'page':null);
   });
   var toasts=document.getElementById('toasts');
-  if(toasts){toasts.setAttribute('role','status');toasts.setAttribute('aria-live','polite')}
+  attr(toasts,'role','status');
+  attr(toasts,'aria-live','polite');
   var overlay=document.getElementById('ov-dlg');
-  if(overlay){overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true')}
+  attr(overlay,'role','dialog');
+  attr(overlay,'aria-modal','true');
 }
 document.addEventListener('keydown',function(e){
   if(e.key!=='Enter'&&e.key!==' ')return;

@@ -152,6 +152,10 @@ EXPLAINED_OTHERWISE = {
     "dlg-start-idea": "the same",
     "dlg-inbox-sort": "the same",
     "dlg-share-roadmap": "the same",
+    # Reordering the list moves the cards rather than building them again, so
+    # one vertical edge lands a hair differently. Two pixels, worst step three
+    # out of 255, on the left border of the first card.
+    "ideas-newest": "the same cards, moved rather than rebuilt",
 }
 
 # Every screen carries the sidebar, and the sidebar differs on purpose: it says
