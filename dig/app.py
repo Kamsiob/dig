@@ -40,6 +40,14 @@ def main(argv: list[str] | None = None) -> int:
 
         print(USAGE)
         return 0
+    if "--install" in argv:
+        from dig.desktop import install
+
+        return install()
+    if "--uninstall" in argv:
+        from dig.desktop import uninstall
+
+        return uninstall()
 
     _configure_engine()
 

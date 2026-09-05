@@ -126,5 +126,9 @@ USAGE = """Dig
                                as a dated log entry on that project
   dig open "Website refresh"   open that project
 
+  dig --install                put Dig in your applications menu
+  dig --uninstall              take it out again, keeping your data
+  dig --version                which Dig this is
+
 A second launch hands its arguments to the Dig you already have open.
 """

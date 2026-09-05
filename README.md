@@ -77,9 +77,24 @@ no notifications, no accounts or cloud, and no AI.
 
 ## Running it
 
-Dig needs Python 3.11 or newer and PySide6 with QtWebEngine. On Bazzite and
-other image based systems everything installs into your home folder; nothing is
-written to `/usr` and nothing asks for root.
+Either way nothing is written outside your home folder, nothing asks for root,
+and nothing goes near `/usr`, which matters on Bazzite and any other image based
+system. Running from source needs Python 3.11 or newer and PySide6 with
+QtWebEngine; the AppImage needs neither, because it carries them.
+
+**The AppImage.** One file, nothing to install, nothing needed from your
+system. Put it wherever you keep your applications, make it executable, and run
+it. `--install` puts it in your applications menu with its icon and a `dig`
+command; `--uninstall` takes it out again and never touches your data.
+
+```
+mkdir -p ~/Applications
+mv Dig-*-x86_64.AppImage ~/Applications/
+chmod +x ~/Applications/Dig-*-x86_64.AppImage
+~/Applications/Dig-*-x86_64.AppImage --install
+```
+
+**From source.**
 
 ```
 git clone https://github.com/Kamsiob/dig.git
@@ -139,6 +154,9 @@ Whatever you type lands in Dig, and the window you already have open says so.
 | Your review | <kbd>6</kbd> |
 | Close anything | <kbd>Esc</kbd> |
 | Shortcuts | <kbd>?</kbd> |
+
+`dig --install` and `dig --uninstall` put Dig in your applications menu and take
+it out again. `--uninstall` never touches your data.
 
 ## Privacy
 

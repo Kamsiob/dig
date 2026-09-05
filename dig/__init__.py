@@ -3,7 +3,7 @@
 Local only. Nothing leaves this machine and no network call is ever made.
 """
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 __app_name__ = "Dig"
 __author__ = "Kamsiob"
 __desktop_file__ = "dig"

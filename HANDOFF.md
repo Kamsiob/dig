@@ -455,6 +455,24 @@ Run it with `./.venv/bin/python scripts/userpass.py --data /tmp/pass`.
    property instead: nothing in the examples matches what the person typed, and
    nothing in them is address shaped.
 
+### Found after publishing
+
+11. **The launcher never opened anything.** `install.sh` wrote the Exec line
+   without quoting the path, and this machine's checkout sits in a folder with a
+   space in its name, so KDE ran `/var/home/Kamsiob/Kamiob` and handed it
+   `Apps/Dig/run` as an argument. The app itself was fine the whole time, on
+   Wayland and from the AppImage; only the menu entry was broken. Reported by
+   the owner as "it's not loading". Quoted now, in `install.sh` and in
+   `dig.desktop.quote`, with a test that splits the line the way a launcher does.
+12. **The menu entry listed Dig twice.** `Categories` carried both Utility and
+   Office, and a desktop entry with two main categories appears twice.
+   `desktop-file-validate` says so; nobody had run it. Office only now, with a
+   test that counts the main categories.
+13. **An AppImage had no way to put itself in the menu.** It is one file with
+   nothing beside it, so `dig --install` writes the entry, the icons and the
+   `dig` command from wherever it happens to be sitting, and `dig --uninstall`
+   removes exactly that and leaves the data alone.
+
 ### The two defects inherited from the prototype
 
 Both were logged during the build rather than fixed quietly out of phase. Both

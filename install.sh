@@ -74,7 +74,11 @@ say "  installing the launcher"
 mkdir -p "$APPS_DIR"
 # The file has to be named dig.desktop: the app calls setDesktopFileName("dig")
 # so KDE Plasma on Wayland groups the window with this launcher.
-sed "s|__EXEC__|$HERE/run|" "$HERE/packaging/dig.desktop" > "$APPS_DIR/dig.desktop"
+#
+# The path is quoted because a desktop entry's Exec is split on spaces, and a
+# folder with a space in its name is ordinary. Unquoted, a launcher runs the
+# first word and hands it the rest as arguments, and nothing opens.
+sed "s|__EXEC__|\"$HERE/run\"|" "$HERE/packaging/dig.desktop" > "$APPS_DIR/dig.desktop"
 chmod +x "$APPS_DIR/dig.desktop"
 command -v update-desktop-database >/dev/null 2>&1 &&
   update-desktop-database -q "$APPS_DIR" 2>/dev/null || true
