@@ -534,17 +534,82 @@ why: it needs a setuid helper or user namespaces and an AppImage can promise
 neither. Dig loads one local file and refuses every request that is not already
 on this computer, so there is nothing for that sandbox to contain.
 
+## 2.1, which is about how it feels
+
+The owner's words: "It's laggy right now. The screen stutters between flows. It
+doesn't load quickly and smoothly as I move around the UI."
+
+### What was measured, before anything was changed
+
+`scripts/bench.py` times a redraw of each screen and a save. `scripts/jank.py`
+counts frames that arrive late, on the real display, at the size the window is
+actually used at. Both are worth keeping: measuring offscreen at 1280x840 told
+me the app was fine, and it was not.
+
+- The screen here is 5120x1440 at **120 Hz**, so a frame is due every 8.3 ms.
+  Measuring against a 60 Hz budget hid everything.
+- Ticking one box restarted **29 row animations** and reset a scroll position of
+  877 to nought.
+- Typing in the log and then starring an entry lost the focus and the words.
+- A redraw of the projects list cost 4.0 ms and rebuilt all 361 elements.
+
+### What was done
+
+Every render function builds a string of HTML, and that string was assigned
+straight to the window. It is the simplest thing that works, and it is the cause
+of all of the above. The string is still built the same way; it is now applied
+to the page rather than swapped in, leaving alone whatever is already right.
+Rows are matched by what identifies them rather than by where they sit.
+
+| | before | after |
+|---|---|---|
+| redraw, Projects | 4.0 ms | 0.8 ms |
+| redraw, the Record tab | 3.6 ms | 1.8 ms |
+| redraw, Settings | 2.1 ms | 0.5 ms |
+| a redraw that changes nothing | 3.4 ms, 18 things touched | 1.1 ms, nothing touched |
+| scroll position when you tick something | lost | kept |
+| what you were typing when something else changed | lost | kept |
+| row animations restarted by one tick | 29 | 0 |
+
+### What was measured and deliberately not done
+
+**The engine draws sixty times a second whatever the screen does.** On this
+120 Hz display that means Dig moves at half the speed of everything around it,
+and it is the largest remaining thing. `--disable-frame-rate-limit` looked like
+the answer and is not: with the GPU on it changes nothing at all. The 5000 fps I
+first measured with it came from a run with `--disable-gpu`, where there is no
+vsync to be limited by. `--disable-gpu-vsync` does nothing either. The cap is
+inside QtWebEngine, above anything the application can reach. Recorded here so
+nobody spends the afternoon on it twice.
+
+**Preloading the fonts** made first paint slower, not faster: 156 ms against
+134 ms over six runs each. Reverted.
+
+**The AppImage takes about twice as long to open as a checkout**, 1.2 s against
+0.55 s, which is the squashfs mount and linking 432 libraries. Trimming the
+library list would help and would also be exactly how an AppImage comes to work
+on the machine it was built on and nowhere else. Left alone.
+
 ## Where to pick up
 
-Every phase is done. What is left is one thing that needs the owner: deleting
-`Kamsiob/dig-archive-private-20260904`, described above under the personal data
-situation. It is private and invisible without credentials, so nothing is
-exposed while it waits.
+Every phase is done, and 2.1 with it. Two things are left, both needing the
+owner:
 
-Published at https://github.com/Kamsiob/dig, release v2.0.0 with the AppImage,
-the source tarball and SHA256SUMS. Checked from outside with no credentials:
-the sums verify, the AppImage runs on an empty home folder, and `dig add` from a
-second launch reaches the first through the single instance socket.
+1. **Delete `Kamsiob/dig-archive-private-20260904`.** It holds the objects from
+   before the history was rewritten. It is private and returns 404 without
+   credentials, so nothing is exposed while it waits. `gh repo delete` needs a
+   `delete_repo` scope this token does not have:
+   `gh auth refresh -h github.com -s delete_repo`.
+2. **The sixty frames a second**, described above. Nothing in the application
+   can reach it.
+
+Published at https://github.com/Kamsiob/dig. Checked from outside with no
+credentials each time: the sums verify, the AppImage runs on an empty home
+folder, and `dig add` from a second launch reaches the first through the single
+instance socket.
 
 Run the suite with `./.venv/bin/python -m pytest tests/ -q`. Compare against the
-prototype with `scripts/fidelity.py`. Drive the real app with `scripts/drive.py`.
+prototype with `scripts/fidelity.py`. Use it like a person with
+`scripts/userpass.py`. Time it with `scripts/bench.py` and count dropped frames
+with `scripts/jank.py`, the second of which has to run on a real screen.
+
